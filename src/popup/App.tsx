@@ -14,28 +14,55 @@ const App: React.FC = () => {
 
   // 发送消息到背景脚本
   const sendMessage = (message: BackgroundMessage): Promise<ApiResponse<any>> => {
-    return new Promise((resolve) => {
-      chrome.runtime.sendMessage(message, (response) => {
-        resolve(response);
-      });
+    return new Promise((resolve, reject) => {
+      console.log('Sending message:', message);
+      
+      // 检查runtime是否可用
+      if (!chrome.runtime) {
+        console.error('Chrome runtime not available');
+        reject(new Error('Chrome runtime not available'));
+        return;
+      }
+      
+      try {
+        chrome.runtime.sendMessage(message, (response) => {
+          // 检查是否有runtime错误
+          if (chrome.runtime.lastError) {
+            console.error('Runtime error:', chrome.runtime.lastError);
+            reject(new Error(chrome.runtime.lastError.message));
+            return;
+          }
+          
+          console.log('Received response:', response);
+          resolve(response || { success: false, error: 'No response received' });
+        });
+      } catch (error) {
+        console.error('Error sending message:', error);
+        reject(error);
+      }
     });
   };
 
   // 加载观察列表数据
   const loadWatchlistPrices = async () => {
     try {
+      console.log('Starting to load watchlist prices...');
       setIsLoading(true);
       setError(null);
       
       const response = await sendMessage({ type: 'GET_WATCHLIST_PRICES' });
+      console.log('Got watchlist response:', response);
       
       if (response.success && response.data) {
         setWatchlistCoins(response.data);
+        console.log('Set watchlist coins:', response.data);
       } else {
+        console.error('Failed to load watchlist:', response.error);
         setError(response.error || '加载失败');
       }
     } catch (err) {
-      setError('网络错误');
+      console.error('Error loading watchlist:', err);
+      setError(err instanceof Error ? err.message : '网络错误');
     } finally {
       setIsLoading(false);
     }
@@ -129,10 +156,46 @@ const App: React.FC = () => {
 
   // 初始化和定期更新
   useEffect(() => {
-    loadWatchlistPrices();
+    console.log('App component mounted, checking service worker...');
+    
+    // 等待service worker准备就绪
+    const initializeApp = async () => {
+      try {
+        // 发送一个简单的ping消息来检查service worker是否准备就绪
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            reject(new Error('Service worker timeout'));
+          }, 5000);
+          
+          chrome.runtime.sendMessage({ type: 'PING' }, (response) => {
+            clearTimeout(timeout);
+            if (chrome.runtime.lastError) {
+              console.log('Service worker not ready, waiting...');
+              // Service worker可能还在启动中，稍后重试
+              setTimeout(() => resolve(undefined), 1000);
+            } else {
+              console.log('Service worker ready');
+              resolve(response);
+            }
+          });
+        });
+        
+        console.log('Service worker ready, loading initial data...');
+        loadWatchlistPrices();
+      } catch (error) {
+        console.error('Error initializing app:', error);
+        // 即使ping失败，也尝试加载数据
+        loadWatchlistPrices();
+      }
+    };
+    
+    initializeApp();
     
     // 每30秒更新一次
-    const interval = setInterval(loadWatchlistPrices, 30000);
+    const interval = setInterval(() => {
+      console.log('Auto refreshing prices...');
+      loadWatchlistPrices();
+    }, 30000);
     
     return () => clearInterval(interval);
   }, []);

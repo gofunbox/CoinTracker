@@ -1,53 +1,185 @@
-import { Coin } from '../types';
+import { Coin, SearchResult } from '../types';
 
 const API_BASE = 'https://api.coingecko.com/api/v3';
 
-export class CoinGeckoService {
-  static async getCoins(ids: string[]): Promise<Coin[]> {
-    try {
-      const idsParam = ids.join(',');
-      const response = await fetch(
-        `${API_BASE}/coins/markets?vs_currency=usd&ids=${idsParam}&order=market_cap_desc&per_page=100&page=1&sparkline=false&price_change_percentage=24h`
-      );
+// 请求缓存
+const cache = new Map<string, { data: any; timestamp: number; ttl: number }>();
+
+// 请求队列和限制
+class RequestQueue {
+  private queue: Array<() => Promise<any>> = [];
+  private processing = false;
+  private lastRequestTime = 0;
+  private readonly MIN_INTERVAL = 1500; // 1.5秒间隔
+
+  async add<T>(requestFn: () => Promise<T>): Promise<T> {
+    return new Promise((resolve, reject) => {
+      this.queue.push(async () => {
+        try {
+          const result = await requestFn();
+          resolve(result);
+        } catch (error) {
+          reject(error);
+        }
+      });
+      this.process();
+    });
+  }
+
+  private async process() {
+    if (this.processing || this.queue.length === 0) return;
+    
+    this.processing = true;
+    
+    while (this.queue.length > 0) {
+      const now = Date.now();
+      const timeSinceLastRequest = now - this.lastRequestTime;
       
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      if (timeSinceLastRequest < this.MIN_INTERVAL) {
+        await new Promise(resolve => setTimeout(resolve, this.MIN_INTERVAL - timeSinceLastRequest));
       }
       
-      return await response.json();
+      const request = this.queue.shift();
+      if (request) {
+        this.lastRequestTime = Date.now();
+        await request();
+      }
+    }
+    
+    this.processing = false;
+  }
+}
+
+const requestQueue = new RequestQueue();
+
+export class CoinGeckoService {
+  // 缓存辅助函数
+  private static getCacheKey(url: string): string {
+    return btoa(url.replace(/[^a-zA-Z0-9]/g, '_')); // 安全的base64编码
+  }
+
+  private static getFromCache(key: string): any | null {
+    const cached = cache.get(key);
+    if (!cached) return null;
+    
+    const now = Date.now();
+    if (now - cached.timestamp > cached.ttl) {
+      cache.delete(key);
+      return null;
+    }
+    
+    return cached.data;
+  }
+
+  private static setCache(key: string, data: any, ttl: number = 300000): void {
+    cache.set(key, {
+      data,
+      timestamp: Date.now(),
+      ttl
+    });
+  }
+
+  // 带缓存和频率限制的请求函数
+  private static async fetchWithCache(url: string, ttl: number = 300000): Promise<any> {
+    const cacheKey = this.getCacheKey(url);
+    const cached = this.getFromCache(cacheKey);
+    
+    if (cached) {
+      console.log('Using cached data for:', url);
+      return cached;
+    }
+
+    return requestQueue.add(async () => {
+      try {
+        console.log('Making API request to:', url);
+        const response = await fetch(url);
+        
+        if (!response.ok) {
+          if (response.status === 429) {
+            console.warn('Rate limit exceeded, using longer delay...');
+            await new Promise(resolve => setTimeout(resolve, 10000)); // 等待10秒
+            throw new Error('API请求过于频繁，请稍后再试');
+          }
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        this.setCache(cacheKey, data, ttl);
+        return data;
+      } catch (error) {
+        console.error('API request failed:', error);
+        throw error;
+      }
+    });
+  }
+
+  // 获取多个币种的市场数据
+  static async getCoins(coinIds: string[]): Promise<Coin[]> {
+    try {
+      console.log('CoinGecko: getCoins called with:', coinIds);
+      
+      if (coinIds.length === 0) {
+        console.log('CoinGecko: no coin IDs provided, returning empty array');
+        return [];
+      }
+      
+      const ids = coinIds.join(',');
+      const url = `${API_BASE}/coins/markets?vs_currency=usd&ids=${ids}&order=market_cap_desc&per_page=100&page=1&sparkline=false&locale=en`;
+      console.log('CoinGecko: making request to:', url);
+      
+      const data = await this.fetchWithCache(url, 180000); // 3分钟缓存
+      console.log('CoinGecko: received data:', data);
+      
+      const coins = data.map((coin: any) => ({
+        id: coin.id,
+        symbol: coin.symbol,
+        name: coin.name,
+        image: coin.image,
+        current_price: coin.current_price || 0,
+        price_change_percentage_24h: coin.price_change_percentage_24h || 0,
+        market_cap: coin.market_cap || 0,
+        market_cap_rank: coin.market_cap_rank || 0,
+        last_updated: coin.last_updated
+      }));
+      
+      console.log('CoinGecko: processed coins:', coins);
+      return coins;
     } catch (error) {
-      console.error('Error fetching coins:', error);
+      console.error('CoinGecko: error fetching coins:', error);
       return [];
     }
   }
 
-  static async searchCoins(query: string): Promise<any[]> {
+  // 搜索币种
+  static async searchCoins(query: string): Promise<SearchResult[]> {
     try {
-      const response = await fetch(`${API_BASE}/search?query=${encodeURIComponent(query)}`);
+      if (!query || query.trim().length < 2) return [];
       
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
+      const url = `${API_BASE}/search?query=${encodeURIComponent(query.trim())}`;
+      const data = await this.fetchWithCache(url, 900000); // 15分钟缓存
       
-      const data = await response.json();
-      return data.coins || [];
+      return (data.coins || []).slice(0, 10).map((coin: any) => ({
+        id: coin.id,
+        name: coin.name,
+        symbol: coin.symbol,
+        thumb: coin.thumb || coin.large || coin.small,
+        market_cap_rank: coin.market_cap_rank
+      }));
     } catch (error) {
       console.error('Error searching coins:', error);
       return [];
     }
   }
 
+  // 获取热门币种
   static async getTrendingCoins(): Promise<Coin[]> {
     try {
-      const response = await fetch(`${API_BASE}/search/trending`);
+      const url = `${API_BASE}/search/trending`;
+      const data = await this.fetchWithCache(url, 1800000); // 30分钟缓存
       
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
+      const trendingIds = (data.coins || []).map((coin: any) => coin.item.id).slice(0, 10);
       
-      const data = await response.json();
-      const trendingIds = data.coins.map((coin: any) => coin.item.id).slice(0, 10);
-      
+      if (trendingIds.length === 0) return [];
       return this.getCoins(trendingIds);
     } catch (error) {
       console.error('Error fetching trending coins:', error);
@@ -58,22 +190,15 @@ export class CoinGeckoService {
   // 获取币种历史价格数据（用于K线图）
   static async getCoinHistory(coinId: string, days: number = 30): Promise<any> {
     try {
-      const response = await fetch(
-        `${API_BASE}/coins/${coinId}/market_chart?vs_currency=usd&days=${days}&interval=daily`
-      );
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      const data = await response.json();
+      const url = `${API_BASE}/coins/${coinId}/market_chart?vs_currency=usd&days=${days}&interval=daily`;
+      const data = await this.fetchWithCache(url, 600000); // 10分钟缓存
       
       // 转换为图表所需的格式
       const chartData = data.prices.map((price: [number, number], index: number) => ({
-        time: Math.floor(price[0] / 1000), // 转换为秒时间戳
+        time: Math.floor(price[0] / 1000),
         open: index > 0 ? data.prices[index - 1][1] : price[1],
-        high: price[1] * 1.02, // 模拟高价
-        low: price[1] * 0.98,  // 模拟低价
+        high: price[1] * 1.02,
+        low: price[1] * 0.98,
         close: price[1]
       }));
       
@@ -91,15 +216,10 @@ export class CoinGeckoService {
   // 获取币种详细信息
   static async getCoinDetails(coinId: string): Promise<any> {
     try {
-      const response = await fetch(
-        `${API_BASE}/coins/${coinId}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=true`
-      );
+      const url = `${API_BASE}/coins/${coinId}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=true`;
+      const data = await this.fetchWithCache(url, 600000); // 10分钟缓存
       
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      return await response.json();
+      return data;
     } catch (error) {
       console.error('Error fetching coin details:', error);
       throw error;
