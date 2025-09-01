@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="64" cy="64" r="64" fill="#3B82F6"/>
+  <path d="M64 32C81.673 32 96 46.327 96 64C96 81.673 81.673 96 64 96C46.327 96 32 81.673 32 64C32 46.327 46.327 32 64 32ZM64 80C72.837 80 80 72.837 80 64C80 55.163 72.837 48 64 48C55.163 48 48 55.163 48 64C48 72.837 55.163 80 64 80Z" fill="white"/>
+  <text x="64" y="72" font-family="Arial, sans-serif" font-size="20" font-weight="bold" text-anchor="middle" fill="white">₿</text>
+</svg>
