@@ -11,6 +11,7 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'watchlist' | 'search'>('watchlist');
   const [error, setError] = useState<string | null>(null);
   const [selectedCoin, setSelectedCoin] = useState<{ id: string; name: string } | null>(null);
+  const [refreshSuccess, setRefreshSuccess] = useState(false);
 
   // 发送消息到背景脚本
   const sendMessage = (message: BackgroundMessage): Promise<ApiResponse<any>> => {
@@ -49,13 +50,20 @@ const App: React.FC = () => {
       console.log('Starting to load watchlist prices...');
       setIsLoading(true);
       setError(null);
+      setRefreshSuccess(false);
       
       const response = await sendMessage({ type: 'GET_WATCHLIST_PRICES' });
       console.log('Got watchlist response:', response);
       
       if (response.success && response.data) {
         setWatchlistCoins(response.data);
+        setRefreshSuccess(true);
         console.log('Set watchlist coins:', response.data);
+        
+        // 2秒后隐藏成功提示
+        setTimeout(() => {
+          setRefreshSuccess(false);
+        }, 2000);
       } else {
         console.error('Failed to load watchlist:', response.error);
         setError(response.error || '加载失败');
@@ -253,12 +261,22 @@ const App: React.FC = () => {
               <button
                 onClick={loadWatchlistPrices}
                 disabled={isLoading}
-                className="flex items-center text-sm text-blue-600 hover:text-blue-700 disabled:opacity-50"
+                className={`flex items-center text-sm transition-colors ${
+                  refreshSuccess
+                    ? 'text-green-600 hover:text-green-700'
+                    : 'text-blue-600 hover:text-blue-700'
+                } disabled:opacity-50`}
               >
-                <svg className={`w-4 h-4 mr-1 ${isLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                刷新价格
+                {refreshSuccess ? (
+                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                ) : (
+                  <svg className={`w-4 h-4 mr-1 ${isLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                )}
+                {refreshSuccess ? '刷新成功' : isLoading ? '刷新中...' : '刷新价格'}
               </button>
             </div>
 
