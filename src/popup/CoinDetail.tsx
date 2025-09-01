@@ -20,55 +20,89 @@ const CoinDetail: React.FC<CoinDetailProps> = ({ coinId, coinName, onBack }) => 
 
   // 发送消息到背景脚本
   const sendMessage = (message: BackgroundMessage): Promise<ApiResponse<any>> => {
-    return new Promise((resolve) => {
-      chrome.runtime.sendMessage(message, (response) => {
-        resolve(response);
-      });
+    return new Promise((resolve, reject) => {
+      console.log('CoinDetail: Sending message:', message);
+      
+      // 检查runtime是否可用
+      if (!chrome.runtime) {
+        console.error('CoinDetail: Chrome runtime not available');
+        reject(new Error('Chrome runtime not available'));
+        return;
+      }
+      
+      try {
+        chrome.runtime.sendMessage(message, (response) => {
+          // 检查是否有runtime错误
+          if (chrome.runtime.lastError) {
+            console.error('CoinDetail: Runtime error:', chrome.runtime.lastError);
+            reject(new Error(chrome.runtime.lastError.message));
+            return;
+          }
+          
+          console.log('CoinDetail: Received response:', response);
+          resolve(response || { success: false, error: 'No response received' });
+        });
+      } catch (error) {
+        console.error('CoinDetail: Error sending message:', error);
+        reject(error);
+      }
     });
   };
 
   const initChart = () => {
-    if (!chartContainerRef.current || chartRef.current) return;
+    if (!chartContainerRef.current || chartRef.current) {
+      console.log('CoinDetail: Chart container not ready or chart already exists');
+      return;
+    }
 
-    const chart = createChart(chartContainerRef.current, {
-      width: 360,
-      height: 300,
-      layout: {
-        background: { color: 'white' },
-        textColor: '#333',
-      },
-      grid: {
-        vertLines: { color: '#eeeeee' },
-        horzLines: { color: '#eeeeee' },
-      },
-      crosshair: {
-        mode: 1,
-      },
-      rightPriceScale: {
-        borderColor: '#cccccc',
-      },
-      timeScale: {
-        borderColor: '#cccccc',
-        timeVisible: true,
-        secondsVisible: false,
-      },
-    });
+    console.log('CoinDetail: Initializing chart...');
 
-    const candlestickSeries = chart.addCandlestickSeries({
-      upColor: '#22c55e',
-      downColor: '#ef4444',
-      borderDownColor: '#ef4444',
-      borderUpColor: '#22c55e',
-      wickDownColor: '#ef4444',
-      wickUpColor: '#22c55e',
-    });
+    try {
+      const chart = createChart(chartContainerRef.current, {
+        width: 360,
+        height: 300,
+        layout: {
+          background: { color: 'white' },
+          textColor: '#333',
+        },
+        grid: {
+          vertLines: { color: '#eeeeee' },
+          horzLines: { color: '#eeeeee' },
+        },
+        crosshair: {
+          mode: 1,
+        },
+        rightPriceScale: {
+          borderColor: '#cccccc',
+        },
+        timeScale: {
+          borderColor: '#cccccc',
+          timeVisible: true,
+          secondsVisible: false,
+        },
+      });
 
-    chartRef.current = chart;
-    candlestickSeriesRef.current = candlestickSeries;
+      const candlestickSeries = chart.addCandlestickSeries({
+        upColor: '#22c55e',
+        downColor: '#ef4444',
+        borderDownColor: '#ef4444',
+        borderUpColor: '#22c55e',
+        wickDownColor: '#ef4444',
+        wickUpColor: '#22c55e',
+      });
+
+      chartRef.current = chart;
+      candlestickSeriesRef.current = candlestickSeries;
+      
+      console.log('CoinDetail: Chart initialized successfully');
+    } catch (error) {
+      console.error('CoinDetail: Error initializing chart:', error);
+    }
   };
 
   const loadData = async () => {
     try {
+      console.log('CoinDetail: Starting to load data for', coinId, 'timeframe:', timeframe);
       setLoading(true);
       setError(null);
 
@@ -78,31 +112,40 @@ const CoinDetail: React.FC<CoinDetailProps> = ({ coinId, coinName, onBack }) => 
         sendMessage({ type: 'GET_COIN_DETAILS', coinId })
       ]);
 
+      console.log('CoinDetail: History response:', historyResponse);
+      console.log('CoinDetail: Details response:', detailsResponse);
+
       if (detailsResponse.success) {
         setCoinDetails(detailsResponse.data);
+        console.log('CoinDetail: Set coin details:', detailsResponse.data);
       }
 
       // 更新图表数据
       if (historyResponse.success && candlestickSeriesRef.current && historyResponse.data?.prices) {
+        console.log('CoinDetail: Setting chart data:', historyResponse.data.prices);
         candlestickSeriesRef.current.setData(historyResponse.data.prices as CandlestickData[]);
       }
 
       if (!historyResponse.success || !detailsResponse.success) {
-        setError(historyResponse.error || detailsResponse.error || '加载数据失败');
+        const errorMsg = historyResponse.error || detailsResponse.error || '加载数据失败';
+        console.error('CoinDetail: API error:', errorMsg);
+        setError(errorMsg);
       }
 
     } catch (err) {
-      setError('加载数据失败');
-      console.error('Error loading coin data:', err);
+      console.error('CoinDetail: Error loading coin data:', err);
+      setError(err instanceof Error ? err.message : '加载数据失败');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
+    console.log('CoinDetail: Component mounted, initializing chart...');
     initChart();
     return () => {
       if (chartRef.current) {
+        console.log('CoinDetail: Cleaning up chart...');
         chartRef.current.remove();
         chartRef.current = null;
         candlestickSeriesRef.current = null;
@@ -111,8 +154,18 @@ const CoinDetail: React.FC<CoinDetailProps> = ({ coinId, coinName, onBack }) => 
   }, []);
 
   useEffect(() => {
-    if (chartRef.current) {
+    console.log('CoinDetail: Coin or timeframe changed, loading data...', { coinId, timeframe });
+    if (chartRef.current && candlestickSeriesRef.current) {
       loadData();
+    } else {
+      console.log('CoinDetail: Chart not ready yet, waiting...');
+      // 如果图表还没准备好，稍后重试
+      const timer = setTimeout(() => {
+        if (chartRef.current && candlestickSeriesRef.current) {
+          loadData();
+        }
+      }, 100);
+      return () => clearTimeout(timer);
     }
   }, [coinId, timeframe]);
 

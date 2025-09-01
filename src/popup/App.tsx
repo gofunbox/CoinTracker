@@ -328,7 +328,10 @@ const App: React.FC = () => {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        removeFromWatchlist(coin.id);
+                        // 添加确认对话框
+                        if (window.confirm(`确定要从观察列表中移除 ${coin.name} (${coin.symbol.toUpperCase()}) 吗？`)) {
+                          removeFromWatchlist(coin.id);
+                        }
                       }}
                       className="text-red-500 hover:text-red-700 p-1"
                       title="移除"
