@@ -17,6 +17,7 @@ const CoinDetail: React.FC<CoinDetailProps> = ({ coinId, coinName, onBack }) => 
   const [error, setError] = useState<string | null>(null);
   const [coinDetails, setCoinDetails] = useState<any>(null);
   const [timeframe, setTimeframe] = useState<number>(30);
+  const [interval, setInterval] = useState<'daily' | 'weekly'>('daily');
 
   // 发送消息到背景脚本
   const sendMessage = (message: BackgroundMessage): Promise<ApiResponse<any>> => {
@@ -108,7 +109,7 @@ const CoinDetail: React.FC<CoinDetailProps> = ({ coinId, coinName, onBack }) => 
 
       // 并行加载历史数据和详细信息
       const [historyResponse, detailsResponse] = await Promise.all([
-        sendMessage({ type: 'GET_COIN_HISTORY', coinId, days: timeframe }),
+        sendMessage({ type: 'GET_COIN_HISTORY', coinId, days: timeframe, interval }),
         sendMessage({ type: 'GET_COIN_DETAILS', coinId })
       ]);
 
@@ -154,7 +155,7 @@ const CoinDetail: React.FC<CoinDetailProps> = ({ coinId, coinName, onBack }) => 
   }, []);
 
   useEffect(() => {
-    console.log('CoinDetail: Coin or timeframe changed, loading data...', { coinId, timeframe });
+    console.log('CoinDetail: Coin or timeframe changed, loading data...', { coinId, timeframe, interval });
     if (chartRef.current && candlestickSeriesRef.current) {
       loadData();
     } else {
@@ -167,7 +168,7 @@ const CoinDetail: React.FC<CoinDetailProps> = ({ coinId, coinName, onBack }) => 
       }, 100);
       return () => clearTimeout(timer);
     }
-  }, [coinId, timeframe]);
+  }, [coinId, timeframe, interval]);
 
   const formatPrice = (price: number): string => {
     if (price >= 1) {
@@ -272,20 +273,48 @@ const CoinDetail: React.FC<CoinDetailProps> = ({ coinId, coinName, onBack }) => 
 
             {/* 时间范围选择 */}
             <div className="bg-white px-4 py-2 border-b">
-              <div className="flex space-x-2">
-                {[7, 30, 90, 365].map((days) => (
+              <div className="mb-2">
+                <div className="text-xs text-gray-500 mb-1">时间范围</div>
+                <div className="flex space-x-2">
+                  {[7, 30, 90, 365].map((days) => (
+                    <button
+                      key={days}
+                      onClick={() => setTimeframe(days)}
+                      className={`px-3 py-1 rounded text-sm font-medium ${
+                        timeframe === days
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                    >
+                      {days === 7 ? '7天' : days === 30 ? '30天' : days === 90 ? '90天' : '1年'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500 mb-1">K线周期</div>
+                <div className="flex space-x-2">
                   <button
-                    key={days}
-                    onClick={() => setTimeframe(days)}
+                    onClick={() => setInterval('daily')}
                     className={`px-3 py-1 rounded text-sm font-medium ${
-                      timeframe === days
-                        ? 'bg-blue-500 text-white'
+                      interval === 'daily'
+                        ? 'bg-green-500 text-white'
                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                     }`}
                   >
-                    {days === 7 ? '7天' : days === 30 ? '30天' : days === 90 ? '90天' : '1年'}
+                    日线
                   </button>
-                ))}
+                  <button
+                    onClick={() => setInterval('weekly')}
+                    className={`px-3 py-1 rounded text-sm font-medium ${
+                      interval === 'weekly'
+                        ? 'bg-green-500 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    周线
+                  </button>
+                </div>
               </div>
             </div>
 

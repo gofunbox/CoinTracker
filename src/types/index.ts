@@ -41,6 +41,7 @@ export interface BackgroundMessage {
   query?: string;
   coinId?: string;
   days?: number;
+  interval?: 'daily' | 'weekly';
 }
 
 // Chrome扩展类型声明将由@types/chrome包提供
