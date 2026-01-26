@@ -190,13 +190,7 @@ export class CoinGeckoService {
   // 获取币种历史价格数据（用于K线图）
   static async getCoinHistory(coinId: string, days: number = 30, interval: 'daily' | 'weekly' = 'daily'): Promise<any> {
     try {
-      // 根据时间范围自动选择合适的间隔
-      let apiInterval = interval;
-      if (days > 90) {
-        apiInterval = 'daily'; // CoinGecko API对于长期数据会自动调整
-      }
-      
-      const url = `${API_BASE}/coins/${coinId}/market_chart?vs_currency=usd&days=${days}&interval=${apiInterval}`;
+      const url = `${API_BASE}/coins/${coinId}/market_chart?vs_currency=usd&days=${days}&interval=${interval}`;
       const data = await this.fetchWithCache(url, 600000); // 10分钟缓存
       
       // 转换为图表所需的格式
