@@ -188,9 +188,9 @@ export class CoinGeckoService {
   }
 
   // 获取币种历史价格数据（用于K线图）
-  static async getCoinHistory(coinId: string, days: number = 30): Promise<any> {
+  static async getCoinHistory(coinId: string, days: number = 30, interval: 'daily' | 'weekly' = 'daily'): Promise<any> {
     try {
-      const url = `${API_BASE}/coins/${coinId}/market_chart?vs_currency=usd&days=${days}&interval=daily`;
+      const url = `${API_BASE}/coins/${coinId}/market_chart?vs_currency=usd&days=${days}&interval=${interval}`;
       const data = await this.fetchWithCache(url, 600000); // 10分钟缓存
       
       // 转换为图表所需的格式

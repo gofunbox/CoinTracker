@@ -59,7 +59,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return true;
 
     case 'GET_COIN_HISTORY':
-      handleGetCoinHistory(message.coinId, message.days, sendResponse);
+      handleGetCoinHistory(message.coinId, message.days, message.interval, sendResponse);
       return true;
 
     case 'GET_COIN_DETAILS':
@@ -150,9 +150,9 @@ async function handleRemoveFromWatchlist(coinId: string, sendResponse: (response
   }
 }
 
-async function handleGetCoinHistory(coinId: string, days: number = 30, sendResponse: (response: any) => void) {
+async function handleGetCoinHistory(coinId: string, days: number = 30, interval: 'daily' | 'weekly' = 'daily', sendResponse: (response: any) => void) {
   try {
-    const data = await CoinGeckoService.getCoinHistory(coinId, days);
+    const data = await CoinGeckoService.getCoinHistory(coinId, days, interval);
     sendResponse({ success: true, data });
   } catch (error) {
     console.error('Error getting coin history:', error);
