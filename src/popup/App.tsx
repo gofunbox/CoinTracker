@@ -199,11 +199,11 @@ const App: React.FC = () => {
     
     initializeApp();
     
-    // 每30秒更新一次
+    // 每2分钟更新一次（减少 API 请求频率）
     const interval = setInterval(() => {
       console.log('Auto refreshing prices...');
       loadWatchlistPrices();
-    }, 30000);
+    }, 120000);
     
     return () => clearInterval(interval);
   }, []);

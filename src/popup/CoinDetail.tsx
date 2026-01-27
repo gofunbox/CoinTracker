@@ -1,6 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { createChart, IChartApi, ISeriesApi, CandlestickData } from 'lightweight-charts';
 import { BackgroundMessage, ApiResponse } from '../types';
+
+// 动态导入图表库类型
+type IChartApi = any;
+type ISeriesApi<T> = any;
+type CandlestickData = any;
 
 interface CoinDetailProps {
   coinId: string;
@@ -12,12 +16,15 @@ const CoinDetail: React.FC<CoinDetailProps> = ({ coinId, coinName, onBack }) => 
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  const chartDataRef = useRef<any[] | null>(null);
   
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [coinDetails, setCoinDetails] = useState<any>(null);
   const [timeframe, setTimeframe] = useState<number>(30);
-  const [interval, setInterval] = useState<'daily' | 'weekly'>('daily');
+  const [chartInterval, setChartInterval] = useState<'daily' | 'weekly'>('daily');
+
+  console.log('CoinDetail: Component rendering', { coinId, coinName });
 
   // 发送消息到背景脚本
   const sendMessage = (message: BackgroundMessage): Promise<ApiResponse<any>> => {
@@ -50,21 +57,34 @@ const CoinDetail: React.FC<CoinDetailProps> = ({ coinId, coinName, onBack }) => 
     });
   };
 
-  const initChart = () => {
-    if (!chartContainerRef.current || chartRef.current) {
-      console.log('CoinDetail: Chart container not ready or chart already exists');
+  const initChart = async () => {
+    if (!chartContainerRef.current) {
+      console.log('CoinDetail: Chart container not ready');
+      return;
+    }
+    
+    if (chartRef.current) {
+      console.log('CoinDetail: Chart already exists');
       return;
     }
 
     console.log('CoinDetail: Initializing chart...');
+    console.log('CoinDetail: Container size:', chartContainerRef.current.clientWidth, chartContainerRef.current.clientHeight);
 
     try {
+      // 动态导入图表库
+      const { createChart } = await import('lightweight-charts');
+      
+      // 获取容器宽度，如果为0则使用默认值
+      const containerWidth = chartContainerRef.current.clientWidth || 340;
+      console.log('CoinDetail: Using chart width:', containerWidth);
+      
       const chart = createChart(chartContainerRef.current, {
-        width: 360,
+        width: containerWidth,
         height: 300,
         layout: {
-          background: { color: 'white' },
-          textColor: '#333',
+          background: { color: '#ffffff' },
+          textColor: '#333333',
         },
         grid: {
           vertLines: { color: '#eeeeee' },
@@ -96,54 +116,84 @@ const CoinDetail: React.FC<CoinDetailProps> = ({ coinId, coinName, onBack }) => 
       candlestickSeriesRef.current = candlestickSeries;
       
       console.log('CoinDetail: Chart initialized successfully');
+      
+      // 如果已经有数据，设置到图表
+      if (chartDataRef.current && chartDataRef.current.length > 0) {
+        console.log('CoinDetail: Setting saved chart data after init:', chartDataRef.current.length, 'items');
+        console.log('CoinDetail: First data point:', chartDataRef.current[0]);
+        candlestickSeries.setData(chartDataRef.current);
+        chart.timeScale().fitContent();
+      }
     } catch (error) {
       console.error('CoinDetail: Error initializing chart:', error);
+      // 图表初始化失败不阻止显示数据
     }
   };
 
-  const loadData = async () => {
+  const loadData = async (isInitial: boolean = true) => {
     try {
-      console.log('CoinDetail: Starting to load data for', coinId, 'timeframe:', timeframe);
-      setLoading(true);
+      console.log('CoinDetail: Starting to load data for', coinId, 'timeframe:', timeframe, 'isInitial:', isInitial);
+      
+      // 只有初次加载才显示 loading 状态
+      if (isInitial) {
+        setLoading(true);
+      }
       setError(null);
 
-      // 并行加载历史数据和详细信息
-      const [historyResponse, detailsResponse] = await Promise.all([
-        sendMessage({ type: 'GET_COIN_HISTORY', coinId, days: timeframe, interval }),
-        sendMessage({ type: 'GET_COIN_DETAILS', coinId })
-      ]);
+      // 初次加载时获取详细信息
+      if (isInitial) {
+        const detailsResponse = await sendMessage({ type: 'GET_COIN_DETAILS', coinId });
+        console.log('CoinDetail: Details response:', detailsResponse);
 
-      console.log('CoinDetail: History response:', historyResponse);
-      console.log('CoinDetail: Details response:', detailsResponse);
-
-      if (detailsResponse.success) {
-        setCoinDetails(detailsResponse.data);
-        console.log('CoinDetail: Set coin details:', detailsResponse.data);
+        if (detailsResponse.success && detailsResponse.data) {
+          setCoinDetails(detailsResponse.data);
+          console.log('CoinDetail: Set coin details:', detailsResponse.data);
+        } else {
+          const errorMsg = detailsResponse.error || '加载数据失败';
+          console.error('CoinDetail: API error:', errorMsg);
+          setError(errorMsg);
+        }
       }
 
-      // 更新图表数据
-      if (historyResponse.success && candlestickSeriesRef.current && historyResponse.data?.prices) {
-        console.log('CoinDetail: Setting chart data:', historyResponse.data.prices);
-        candlestickSeriesRef.current.setData(historyResponse.data.prices as CandlestickData[]);
-      }
+      // 加载历史数据（用于图表）
+      try {
+        const historyResponse = await sendMessage({ type: 'GET_COIN_HISTORY', coinId, days: timeframe, interval: chartInterval });
+        console.log('CoinDetail: History response:', historyResponse);
 
-      if (!historyResponse.success || !detailsResponse.success) {
-        const errorMsg = historyResponse.error || detailsResponse.error || '加载数据失败';
-        console.error('CoinDetail: API error:', errorMsg);
-        setError(errorMsg);
+        // 保存并更新图表数据
+        if (historyResponse.success && historyResponse.data?.prices) {
+          const prices = historyResponse.data.prices;
+          console.log('CoinDetail: Got chart data:', prices.length, 'items');
+          chartDataRef.current = prices;
+          
+          // 如果图表已经初始化，直接设置数据
+          if (candlestickSeriesRef.current && chartRef.current) {
+            console.log('CoinDetail: Setting chart data immediately');
+            console.log('CoinDetail: First data point:', prices[0]);
+            candlestickSeriesRef.current.setData(prices as CandlestickData[]);
+            chartRef.current.timeScale().fitContent();
+          }
+        }
+      } catch (historyErr) {
+        console.warn('CoinDetail: History load failed, but continuing:', historyErr);
       }
 
     } catch (err) {
       console.error('CoinDetail: Error loading coin data:', err);
       setError(err instanceof Error ? err.message : '加载数据失败');
     } finally {
-      setLoading(false);
+      if (isInitial) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    console.log('CoinDetail: Component mounted, initializing chart...');
-    initChart();
+    console.log('CoinDetail: Component mounted, coinId:', coinId);
+    
+    // 加载数据
+    loadData();
+    
     return () => {
       if (chartRef.current) {
         console.log('CoinDetail: Cleaning up chart...');
@@ -152,23 +202,28 @@ const CoinDetail: React.FC<CoinDetailProps> = ({ coinId, coinName, onBack }) => 
         candlestickSeriesRef.current = null;
       }
     };
-  }, []);
+  }, [coinId]);
 
+  // 当数据加载完成后初始化图表
   useEffect(() => {
-    console.log('CoinDetail: Coin or timeframe changed, loading data...', { coinId, timeframe, interval });
-    if (chartRef.current && candlestickSeriesRef.current) {
-      loadData();
-    } else {
-      console.log('CoinDetail: Chart not ready yet, waiting...');
-      // 如果图表还没准备好，稍后重试
+    if (coinDetails && !loading && !chartRef.current) {
+      console.log('CoinDetail: Data loaded, initializing chart...');
+      // 延迟一帧确保 DOM 已渲染
       const timer = setTimeout(() => {
-        if (chartRef.current && candlestickSeriesRef.current) {
-          loadData();
-        }
-      }, 100);
+        initChart();
+      }, 50);
       return () => clearTimeout(timer);
     }
-  }, [coinId, timeframe, interval]);
+  }, [coinDetails, loading]);
+
+  // 当时间参数改变时重新加载数据
+  useEffect(() => {
+    console.log('CoinDetail: Timeframe/interval changed', { timeframe, chartInterval });
+    if (coinDetails && chartRef.current) {
+      // 只有已经加载过数据且图表存在才重新加载历史数据
+      loadData(false);
+    }
+  }, [timeframe, chartInterval]);
 
   const formatPrice = (price: number): string => {
     if (price >= 1) {
@@ -295,9 +350,9 @@ const CoinDetail: React.FC<CoinDetailProps> = ({ coinId, coinName, onBack }) => 
                 <div className="text-xs text-gray-500 mb-1">K线周期</div>
                 <div className="flex space-x-2">
                   <button
-                    onClick={() => setInterval('daily')}
+                    onClick={() => setChartInterval('daily')}
                     className={`px-3 py-1 rounded text-sm font-medium ${
-                      interval === 'daily'
+                      chartInterval === 'daily'
                         ? 'bg-green-500 text-white'
                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                     }`}
@@ -305,9 +360,9 @@ const CoinDetail: React.FC<CoinDetailProps> = ({ coinId, coinName, onBack }) => 
                     日线
                   </button>
                   <button
-                    onClick={() => setInterval('weekly')}
+                    onClick={() => setChartInterval('weekly')}
                     className={`px-3 py-1 rounded text-sm font-medium ${
-                      interval === 'weekly'
+                      chartInterval === 'weekly'
                         ? 'bg-green-500 text-white'
                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                     }`}
@@ -321,7 +376,7 @@ const CoinDetail: React.FC<CoinDetailProps> = ({ coinId, coinName, onBack }) => 
             {/* K线图 */}
             <div className="bg-white p-4">
               <h3 className="text-sm font-medium text-gray-700 mb-3">价格走势</h3>
-              <div ref={chartContainerRef} className="w-full" />
+              <div ref={chartContainerRef} className="w-full" style={{ height: '300px' }} />
             </div>
 
             {/* 描述 */}
