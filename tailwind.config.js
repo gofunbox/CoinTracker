@@ -8,6 +8,9 @@ module.exports = {
         success: '#10B981',
         danger: '#EF4444',
         warning: '#F59E0B'
+      },
+      fontFamily: {
+        sans: ['Outfit', 'Inter', 'sans-serif'],
       }
     }
   },

@@ -12,12 +12,19 @@ const DEFAULT_WATCHLIST: WatchlistItem[] = [
 
 // 初始化默认观察列表
 chrome.runtime.onInstalled.addListener(async () => {
-  console.log('Extension installed, setting up default watchlist');
+  console.log('Extension installed/updated, setting up storage...');
   
-  const { watchlist } = await chrome.storage.sync.get(['watchlist']);
-  
-  if (!watchlist || watchlist.length === 0) {
-    await chrome.storage.sync.set({ watchlist: DEFAULT_WATCHLIST });
+  // 从旧的 sync storage 迁移数据到 local persistence
+  const syncData = await chrome.storage.sync.get(['watchlist']);
+  if (syncData.watchlist && syncData.watchlist.length > 0) {
+    console.log('Migrating watchlist from sync to local storage');
+    await chrome.storage.local.set({ watchlist: syncData.watchlist });
+    await chrome.storage.sync.remove('watchlist'); // 迁移后清理残留
+  } else {
+    const { watchlist } = await chrome.storage.local.get(['watchlist']);
+    if (!watchlist || watchlist.length === 0) {
+      await chrome.storage.local.set({ watchlist: DEFAULT_WATCHLIST });
+    }
   }
   
   // 设置定期更新 - 改为10分钟一次，避免频率限制
@@ -71,7 +78,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 async function handleGetWatchlistPrices(sendResponse: (response: any) => void) {
   try {
     console.log('Background: handling GET_WATCHLIST_PRICES');
-    const { watchlist } = await chrome.storage.sync.get(['watchlist']);
+    const { watchlist } = await chrome.storage.local.get(['watchlist']);
     console.log('Background: got watchlist from storage:', watchlist);
     
     const coinIds = (watchlist || DEFAULT_WATCHLIST).map((item: WatchlistItem) => item.coinId);
@@ -111,7 +118,7 @@ async function handleSearchCoins(query: string, sendResponse: (response: any) =>
 
 async function handleAddToWatchlist(coinId: string, sendResponse: (response: any) => void) {
   try {
-    const { watchlist } = await chrome.storage.sync.get(['watchlist']);
+    const { watchlist } = await chrome.storage.local.get(['watchlist']);
     const currentWatchlist: WatchlistItem[] = watchlist || [];
     
     // 检查是否已存在
@@ -126,7 +133,7 @@ async function handleAddToWatchlist(coinId: string, sendResponse: (response: any
     };
     
     const updatedWatchlist = [...currentWatchlist, newItem];
-    await chrome.storage.sync.set({ watchlist: updatedWatchlist });
+    await chrome.storage.local.set({ watchlist: updatedWatchlist });
     
     sendResponse({ success: true });
   } catch (error) {
@@ -137,11 +144,11 @@ async function handleAddToWatchlist(coinId: string, sendResponse: (response: any
 
 async function handleRemoveFromWatchlist(coinId: string, sendResponse: (response: any) => void) {
   try {
-    const { watchlist } = await chrome.storage.sync.get(['watchlist']);
+    const { watchlist } = await chrome.storage.local.get(['watchlist']);
     const currentWatchlist: WatchlistItem[] = watchlist || [];
     
     const updatedWatchlist = currentWatchlist.filter(item => item.coinId !== coinId);
-    await chrome.storage.sync.set({ watchlist: updatedWatchlist });
+    await chrome.storage.local.set({ watchlist: updatedWatchlist });
     
     sendResponse({ success: true });
   } catch (error) {
@@ -172,7 +179,7 @@ async function handleGetCoinDetails(coinId: string, sendResponse: (response: any
 
 async function updatePrices() {
   try {
-    const { watchlist } = await chrome.storage.sync.get(['watchlist']);
+    const { watchlist } = await chrome.storage.local.get(['watchlist']);
     const coinIds = (watchlist || DEFAULT_WATCHLIST).map((item: WatchlistItem) => item.coinId);
     
     const coins = await CoinGeckoService.getCoins(coinIds);

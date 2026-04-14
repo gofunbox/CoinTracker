@@ -148,7 +148,7 @@ const App: React.FC = () => {
 
   // 获取百分比颜色
   const getPercentageColor = (percentage: number): string => {
-    return percentage >= 0 ? 'text-green-600' : 'text-red-600';
+    return percentage >= 0 ? 'text-emerald-400' : 'text-rose-400';
   };
 
   // 搜索防抖
@@ -167,37 +167,9 @@ const App: React.FC = () => {
     console.log('App component mounted, checking service worker...');
     
     // 等待service worker准备就绪
-    const initializeApp = async () => {
-      try {
-        // 发送一个简单的ping消息来检查service worker是否准备就绪
-        await new Promise((resolve, reject) => {
-          const timeout = setTimeout(() => {
-            reject(new Error('Service worker timeout'));
-          }, 5000);
-          
-          chrome.runtime.sendMessage({ type: 'PING' }, (response) => {
-            clearTimeout(timeout);
-            if (chrome.runtime.lastError) {
-              console.log('Service worker not ready, waiting...');
-              // Service worker可能还在启动中，稍后重试
-              setTimeout(() => resolve(undefined), 1000);
-            } else {
-              console.log('Service worker ready');
-              resolve(response);
-            }
-          });
-        });
-        
-        console.log('Service worker ready, loading initial data...');
-        loadWatchlistPrices();
-      } catch (error) {
-        console.error('Error initializing app:', error);
-        // 即使ping失败，也尝试加载数据
-        loadWatchlistPrices();
-      }
-    };
-    
-    initializeApp();
+    // 初始化应用，直接加载数据，无需等待PING
+    // Chrome MV3 架构在发送消息时会自动唤醒 Service Worker
+    loadWatchlistPrices();
     
     // 每2分钟更新一次（减少 API 请求频率）
     const interval = setInterval(() => {
@@ -220,31 +192,49 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="w-full h-full bg-gray-50 flex flex-col">
+    <div className="w-full h-full bg-slate-900 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-slate-100 flex flex-col font-sans">
       {/* 头部 */}
-      <div className="bg-white shadow-sm border-b">
-        <div className="px-4 py-3">
-          <h1 className="text-lg font-semibold text-gray-900">CoinTracker</h1>
+      <div className="bg-slate-900 border-b border-white/10 z-10 sticky top-0">
+        <div className="px-4 py-3 flex items-center justify-between">
+          <h1 className="text-lg font-bold text-white tracking-wide">
+            <span className="text-blue-500">Coin</span>Tracker
+          </h1>
+          {/* 刷新按钮移至头部 */}
+          {activeTab === 'watchlist' && (
+            <button
+              onClick={loadWatchlistPrices}
+              disabled={isLoading}
+              className={`flex items-center text-xs font-bold px-3 py-1.5 rounded-full transition-all ${
+                refreshSuccess
+                  ? 'text-emerald-400 bg-emerald-500/10'
+                  : 'text-slate-300 hover:bg-slate-800 bg-slate-800/50'
+              } disabled:opacity-50 border border-slate-700 hover:border-slate-600`}
+            >
+              <svg className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </button>
+          )}
         </div>
         
         {/* 标签切换 */}
-        <div className="flex border-b">
+        <div className="flex px-2 pb-1 gap-2">
           <button
             onClick={() => setActiveTab('watchlist')}
-            className={`flex-1 px-4 py-2 text-sm font-medium ${
+            className={`flex-1 px-4 py-2 text-sm font-medium rounded-lg transition-all ${
               activeTab === 'watchlist'
-                ? 'text-blue-600 border-b-2 border-blue-600'
-                : 'text-gray-500 hover:text-gray-700'
+                ? 'bg-blue-500/20 text-blue-400 shadow-sm border border-blue-500/30'
+                : 'text-slate-400 hover:text-white hover:bg-white/5 border border-transparent'
             }`}
           >
             观察列表
           </button>
           <button
             onClick={() => setActiveTab('search')}
-            className={`flex-1 px-4 py-2 text-sm font-medium ${
+            className={`flex-1 px-4 py-2 text-sm font-medium rounded-lg transition-all ${
               activeTab === 'search'
-                ? 'text-blue-600 border-b-2 border-blue-600'
-                : 'text-gray-500 hover:text-gray-700'
+                ? 'bg-blue-500/20 text-blue-400 shadow-sm border border-blue-500/30'
+                : 'text-slate-400 hover:text-white hover:bg-white/5 border border-transparent'
             }`}
           >
             搜索添加
@@ -253,63 +243,46 @@ const App: React.FC = () => {
       </div>
 
       {/* 内容区域 */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden relative">
         {activeTab === 'watchlist' ? (
-          <div className="h-full flex flex-col">
-            {/* 刷新按钮 */}
-            <div className="px-4 py-2 border-b bg-white">
-              <button
-                onClick={loadWatchlistPrices}
-                disabled={isLoading}
-                className={`flex items-center text-sm transition-colors ${
-                  refreshSuccess
-                    ? 'text-green-600 hover:text-green-700'
-                    : 'text-blue-600 hover:text-blue-700'
-                } disabled:opacity-50`}
-              >
-                {refreshSuccess ? (
-                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                ) : (
-                  <svg className={`w-4 h-4 mr-1 ${isLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                )}
-                {refreshSuccess ? '刷新成功' : isLoading ? '刷新中...' : '刷新价格'}
-              </button>
-            </div>
+          <div className="h-full flex flex-col relative z-10">
+            {/* 去除了单独的刷新按钮行，以整合到上方头部 */}
+
 
             {/* 观察列表 */}
-            <div className="flex-1 overflow-y-auto scrollbar-thin">
+            <div className="flex-1 overflow-y-auto scrollbar-thin pb-4">
               {error && (
-                <div className="p-4 text-center text-red-600 text-sm">
+                <div className="m-4 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-center text-rose-400 text-sm">
                   {error}
                 </div>
               )}
               
               {isLoading && !error && (
-                <div className="flex items-center justify-center p-8">
-                  <div className="loading-spinner"></div>
-                  <span className="ml-2 text-sm text-gray-600">加载中...</span>
+                <div className="flex flex-col items-center justify-center p-12">
+                  <div className="loading-spinner mb-3"></div>
+                  <span className="text-sm text-slate-400 font-medium tracking-wider">LOADING...</span>
                 </div>
               )}
 
               {!isLoading && !error && watchlistCoins.length === 0 && (
-                <div className="p-8 text-center text-gray-500">
-                  <p className="text-sm">暂无币种</p>
-                  <p className="text-xs mt-1">点击"搜索添加"来添加关注的币种</p>
+                <div className="p-12 text-center text-slate-500 flex flex-col items-center">
+                  <svg className="w-12 h-12 mb-4 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                  </svg>
+                  <p className="text-base font-medium text-slate-400">暂无币种</p>
+                  <p className="text-sm mt-2">点击"搜索添加"来关注您喜欢的数字资产</p>
                 </div>
               )}
 
               {!isLoading && !error && watchlistCoins.length > 0 && (
-                <div className="px-4 py-2 bg-blue-50 border-b">
-                  <p className="text-xs text-blue-600">💡 点击币种名称查看K线图详情</p>
+                <div className="px-4 py-2 mb-2 mx-3 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center">
+                  <span className="text-lg mr-2">💡</span>
+                  <p className="text-xs font-medium text-blue-300">点击币种卡片查看详情走势图</p>
                 </div>
               )}
 
               {!isLoading && !error && watchlistCoins.map((coin) => (
-                <div key={coin.id} className="coin-card p-4 border-b bg-white hover:bg-gray-50">
+                <div key={coin.id} className="coin-card mx-3 mb-3 p-4 rounded-xl bg-slate-800/80">
                   <div className="flex items-center justify-between">
                     <div 
                       className="flex items-center flex-1 cursor-pointer"
@@ -318,27 +291,31 @@ const App: React.FC = () => {
                       <img 
                         src={coin.image} 
                         alt={coin.name}
-                        className="w-8 h-8 rounded-full mr-3"
+                        className="w-10 h-10 rounded-full mr-3 shadow-lg shadow-black/40"
                         onError={(e) => {
-                          e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMTYiIGN5PSIxNiIgcj0iMTYiIGZpbGw9IiNGM0Y0RjYiLz4KPHN2ZyB4PSI4IiB5PSI4IiB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSI+CjxwYXRoIGQ9Ik0xMiAyQzYuNDggMiAyIDYuNDggMiAxMlM2LjQ4IDIyIDEyIDIyIDIyIDE3LjUyIDIyIDEyUzE3LjUyIDIgMTIgMlpNMTIgMTZDMTAuODkgMTYgMTAgMTUuMTEgMTAgMTRTMTAuODkgMTIgMTIgMTJTMTQgMTIuODkgMTQgMTRTMTMuMTEgMTYgMTIgMTZaIiBmaWxsPSIjOUIwN0VGIi8+Cjwvc3ZnPgo8L3N2Zz4K';
+                          e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMTYiIGN5PSIxNiIgcj0iMTYiIGZpbGw9IiMzMzQxNTUiLz4KPHN2ZyB4PSI4IiB5PSI4IiB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSI+CjxwYXRoIGQ9Ik0xMiAyQzYuNDggMiAyIDYuNDggMiAxMlM2LjQ4IDIyIDEyIDIyIDIyIDE3LjUyIDIyIDEyUzE3LjUyIDIgMTIgMlpNMTIgMTZDMTAuODkgMTYgMTAgMTUuMTEgMTAgMTRTMTAuODkgMTIgMTIgMTJTMTQgMTIuODkgMTQgMTRTMTMuMTEgMTYgMTIgMTZaIiBmaWxsPSIjOThCREZGIi8+Cjwvc3ZnPgo8L3N2Zz4K';
                         }}
                       />
                       <div className="flex-1">
-                        <div className="flex items-center">
-                          <span className="font-medium text-gray-900">{coin.symbol.toUpperCase()}</span>
-                          <span className="ml-2 text-xs text-gray-500">{coin.name}</span>
+                        <div className="flex items-baseline">
+                          <span className="font-bold text-white text-base tracking-wide">{coin.symbol.toUpperCase()}</span>
+                          <span className="ml-2 text-xs font-medium text-slate-400">{coin.name}</span>
                         </div>
-                        <div className="text-xs text-gray-400">
-                          #{coin.market_cap_rank}
+                        <div className="text-[10px] uppercase font-bold tracking-wider text-slate-500 mt-0.5">
+                          Rank #{coin.market_cap_rank}
                         </div>
                       </div>
                     </div>
                     
-                    <div className="text-right mr-3">
-                      <div className="font-medium text-gray-900">
+                    <div className="text-right mr-3 flex flex-col items-end">
+                      <div className="font-bold text-white text-[15px] tracking-tight">
                         {formatPrice(coin.current_price)}
                       </div>
-                      <div className={`text-xs ${getPercentageColor(coin.price_change_percentage_24h)}`}>
+                      <div className={`text-xs font-semibold px-1.5 py-0.5 rounded mt-0.5 ${
+                        coin.price_change_percentage_24h >= 0 
+                          ? 'bg-emerald-500/10 text-emerald-400' 
+                          : 'bg-rose-500/10 text-rose-400'
+                      }`}>
                         {formatPercentage(coin.price_change_percentage_24h)}
                       </div>
                     </div>
@@ -346,12 +323,11 @@ const App: React.FC = () => {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        // 添加确认对话框
                         if (window.confirm(`确定要从观察列表中移除 ${coin.name} (${coin.symbol.toUpperCase()}) 吗？`)) {
                           removeFromWatchlist(coin.id);
                         }
                       }}
-                      className="text-red-500 hover:text-red-700 p-1"
+                      className="text-slate-500 hover:text-rose-400 p-2 rounded-lg hover:bg-rose-500/10 transition-colors"
                       title="移除"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -364,46 +340,51 @@ const App: React.FC = () => {
             </div>
           </div>
         ) : (
-          <div className="h-full flex flex-col">
+          <div className="h-full flex flex-col relative z-10">
             {/* 搜索框 */}
-            <div className="p-4 border-b bg-white">
-              <div className="relative">
+            <div className="p-4 pt-5 pb-3 relative z-20">
+              <div className="relative group">
                 <input
                   type="text"
-                  placeholder="搜索币种名称或代码..."
+                  placeholder="搜索币种名称或代码 (如 btc)..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  className="w-full pl-11 pr-4 py-3 bg-slate-800 border border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 text-sm text-white placeholder-slate-500 transition-all shadow-inner focus:shadow-blue-500/10 outline-none"
                 />
-                <svg className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-400 group-focus-within:text-blue-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
               </div>
             </div>
 
             {/* 搜索结果 */}
-            <div className="flex-1 overflow-y-auto scrollbar-thin">
+            <div className="flex-1 overflow-y-auto scrollbar-thin pb-4">
               {isSearching && (
-                <div className="flex items-center justify-center p-8">
-                  <div className="loading-spinner"></div>
-                  <span className="ml-2 text-sm text-gray-600">搜索中...</span>
-                </div>
+                 <div className="flex flex-col items-center justify-center p-12">
+                 <div className="loading-spinner mb-3"></div>
+                 <span className="text-sm text-slate-400 font-medium tracking-wider">SEARCHING...</span>
+               </div>
               )}
 
               {!isSearching && searchQuery && searchResults.length === 0 && (
-                <div className="p-8 text-center text-gray-500">
-                  <p className="text-sm">未找到相关币种</p>
+                <div className="p-12 text-center text-slate-500">
+                  <p className="text-sm font-medium">未找到匹配的币种</p>
                 </div>
               )}
 
               {!isSearching && !searchQuery && (
-                <div className="p-8 text-center text-gray-500">
-                  <p className="text-sm">请输入币种名称或代码</p>
+                <div className="p-12 mt-4 text-center text-slate-500">
+                  <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mx-auto mb-4 border border-white/5">
+                     <svg className="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  </div>
+                  <p className="text-sm font-medium">请输入币种名称或代码以开始</p>
                 </div>
               )}
 
               {!isSearching && searchResults.map((coin) => (
-                <div key={coin.id} className="coin-card p-4 border-b bg-white hover:bg-gray-50">
+                <div key={coin.id} className="coin-card mx-3 mb-2 p-3.5 rounded-xl bg-slate-800/80">
                   <div className="flex items-center justify-between">
                     <div 
                       className="flex items-center flex-1 cursor-pointer"
@@ -412,19 +393,19 @@ const App: React.FC = () => {
                       <img 
                         src={coin.thumb} 
                         alt={coin.name}
-                        className="w-8 h-8 rounded-full mr-3"
+                        className="w-8 h-8 rounded-full mr-3 shadow-md shadow-black/40"
                         onError={(e) => {
-                          e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMTYiIGN5PSIxNiIgcj0iMTYiIGZpbGw9IiNGM0Y0RjYiLz4KPHN2ZyB4PSI4IiB5PSI4IiB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSI+CjxwYXRoIGQ9Ik0xMiAyQzYuNDggMiAyIDYuNDggMiAxMlM2LjQ4IDIyIDEyIDIyIDIyIDE3LjUyIDIyIDEyUzE3LjUyIDIgMTIgMlpNMTIgMTZDMTAuODkgMTYgMTAgMTUuMTEgMTAgMTRTMTAuODkgMTIgMTIgMTJTMTQgMTIuODkgMTQgMTRTMTMuMTEgMTYgMTIgMTZaIiBmaWxsPSIjOUIwN0VGIi8+Cjwvc3ZnPgo8L3N2Zz4K';
+                          e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMTYiIGN5PSIxNiIgcj0iMTYiIGZpbGw9IiMzMzQxNTUiLz4KPHN2ZyB4PSI4IiB5PSI4IiB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSI+CjxwYXRoIGQ9Ik0xMiAyQzYuNDggMiAyIDYuNDggMiAxMlM2LjQ4IDIyIDEyIDIyIDIyIDE3LjUyIDIyIDEyUzE3LjUyIDIgMTIgMlpNMTIgMTZDMTAuODkgMTYgMTAgMTUuMTEgMTAgMTRTMTAuODkgMTIgMTIgMTJTMTQgMTIuODkgMTQgMTRTMTMuMTEgMTYgMTIgMTZaIiBmaWxsPSIjOThCREZGIi8+Cjwvc3ZnPgo8L3N2Zz4K';
                         }}
                       />
                       <div className="flex-1">
-                        <div className="flex items-center">
-                          <span className="font-medium text-gray-900">{coin.symbol.toUpperCase()}</span>
-                          <span className="ml-2 text-xs text-gray-500">{coin.name}</span>
+                        <div className="flex items-baseline">
+                          <span className="font-bold text-white tracking-wide">{coin.symbol.toUpperCase()}</span>
+                          <span className="ml-2 text-xs font-medium text-slate-400">{coin.name}</span>
                         </div>
                         {coin.market_cap_rank && (
-                          <div className="text-xs text-gray-400">
-                            #{coin.market_cap_rank}
+                          <div className="text-[10px] uppercase font-bold tracking-wider text-slate-500 mt-0.5">
+                            Rank #{coin.market_cap_rank}
                           </div>
                         )}
                       </div>
@@ -435,9 +416,9 @@ const App: React.FC = () => {
                         e.stopPropagation();
                         addToWatchlist(coin.id);
                       }}
-                      className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-xs font-medium"
+                      className="btn-glass bg-blue-500 hover:bg-blue-400 text-white px-4 py-1.5 rounded-lg text-xs font-bold tracking-wide shadow-lg shadow-blue-500/20"
                     >
-                      添加
+                      关注 +
                     </button>
                   </div>
                 </div>

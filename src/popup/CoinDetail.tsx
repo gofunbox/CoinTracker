@@ -73,7 +73,7 @@ const CoinDetail: React.FC<CoinDetailProps> = ({ coinId, coinName, onBack }) => 
 
     try {
       // 动态导入图表库
-      const { createChart } = await import('lightweight-charts');
+      const { createChart, ColorType } = await import('lightweight-charts');
       
       // 获取容器宽度，如果为0则使用默认值
       const containerWidth = chartContainerRef.current.clientWidth || 340;
@@ -83,21 +83,21 @@ const CoinDetail: React.FC<CoinDetailProps> = ({ coinId, coinName, onBack }) => 
         width: containerWidth,
         height: 300,
         layout: {
-          background: { color: '#ffffff' },
-          textColor: '#333333',
+          background: { type: ColorType.Solid, color: 'transparent' },
+          textColor: '#94a3b8',
         },
         grid: {
-          vertLines: { color: '#eeeeee' },
-          horzLines: { color: '#eeeeee' },
+          vertLines: { color: 'rgba(255, 255, 255, 0.05)' },
+          horzLines: { color: 'rgba(255, 255, 255, 0.05)' },
         },
         crosshair: {
           mode: 1,
         },
         rightPriceScale: {
-          borderColor: '#cccccc',
+          borderColor: 'rgba(255, 255, 255, 0.1)',
         },
         timeScale: {
-          borderColor: '#cccccc',
+          borderColor: 'rgba(255, 255, 255, 0.1)',
           timeVisible: true,
           secondsVisible: false,
         },
@@ -249,16 +249,16 @@ const CoinDetail: React.FC<CoinDetailProps> = ({ coinId, coinName, onBack }) => 
   };
 
   return (
-    <div className="w-full h-full bg-gray-50 flex flex-col">
+    <div className="w-full h-full bg-slate-900 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-slate-100 flex flex-col font-sans">
       {/* 头部 */}
-      <div className="bg-white shadow-sm border-b">
+      <div className="bg-slate-900 border-b border-white/10 z-10 sticky top-0">
         <div className="px-4 py-3 flex items-center">
           <button
             onClick={onBack}
-            className="mr-3 text-gray-600 hover:text-gray-800"
+            className="mr-3 text-slate-400 hover:text-white transition-colors"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
             </svg>
           </button>
           <div className="flex items-center">
@@ -266,124 +266,124 @@ const CoinDetail: React.FC<CoinDetailProps> = ({ coinId, coinName, onBack }) => 
               <img 
                 src={coinDetails.image?.small} 
                 alt={coinName}
-                className="w-6 h-6 rounded-full mr-2"
+                className="w-6 h-6 rounded-full mr-2 shadow-md shadow-black/40"
               />
             )}
-            <h1 className="text-lg font-semibold text-gray-900">{coinName}</h1>
+            <h1 className="text-lg font-bold text-white tracking-wide">{coinName}</h1>
           </div>
         </div>
       </div>
 
       {/* 内容区域 */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto scrollbar-thin relative pb-4">
         {loading && (
-          <div className="flex items-center justify-center p-8">
-            <div className="loading-spinner"></div>
-            <span className="ml-2 text-sm text-gray-600">加载中...</span>
-          </div>
+           <div className="flex flex-col items-center justify-center p-12">
+           <div className="loading-spinner mb-3"></div>
+           <span className="text-sm text-slate-400 font-medium tracking-wider">LOADING...</span>
+         </div>
         )}
 
         {error && (
-          <div className="p-4 text-center text-red-600 text-sm">
+          <div className="m-4 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-center text-rose-400 text-sm">
             {error}
           </div>
         )}
 
         {!loading && !error && coinDetails && (
-          <div className="space-y-4">
+          <div className="space-y-3 relative z-10 pt-3">
             {/* 价格信息 */}
-            <div className="bg-white p-4 border-b">
-              <div className="flex items-center justify-between mb-2">
-                <div className="text-2xl font-bold text-gray-900">
+            <div className="bg-slate-800/80 p-5 rounded-xl mx-3 border border-white/10 shadow-lg shadow-black/20">
+              <div className="flex items-center justify-between mb-4">
+                <div className="text-3xl font-black text-white tracking-tight">
                   {formatPrice(coinDetails.market_data.current_price.usd)}
                 </div>
-                <div className={`text-sm font-medium ${
+                <div className={`text-sm font-bold px-2 py-1 rounded-md ${
                   coinDetails.market_data.price_change_percentage_24h >= 0 
-                    ? 'text-green-600' 
-                    : 'text-red-600'
+                    ? 'bg-emerald-500/10 text-emerald-400' 
+                    : 'bg-rose-500/10 text-rose-400'
                 }`}>
                   {formatPercentage(coinDetails.market_data.price_change_percentage_24h)}
                 </div>
               </div>
               
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="text-gray-500">市值排名</span>
-                  <div className="font-medium">#{coinDetails.market_cap_rank}</div>
+              <div className="grid grid-cols-2 gap-y-4 gap-x-2 text-sm">
+                <div className="bg-white/5 rounded-lg p-2.5 border border-white/5">
+                  <span className="text-[11px] font-semibold tracking-wider uppercase text-slate-400 block mb-1">Rank</span>
+                  <div className="font-bold text-white">#{coinDetails.market_cap_rank}</div>
                 </div>
-                <div>
-                  <span className="text-gray-500">市值</span>
-                  <div className="font-medium">{formatMarketCap(coinDetails.market_data.market_cap.usd)}</div>
+                <div className="bg-white/5 rounded-lg p-2.5 border border-white/5">
+                  <span className="text-[11px] font-semibold tracking-wider uppercase text-slate-400 block mb-1">Market Cap</span>
+                  <div className="font-bold text-white">{formatMarketCap(coinDetails.market_data.market_cap.usd)}</div>
                 </div>
-                <div>
-                  <span className="text-gray-500">24h最高</span>
-                  <div className="font-medium">{formatPrice(coinDetails.market_data.high_24h.usd)}</div>
+                <div className="bg-white/5 rounded-lg p-2.5 border border-white/5">
+                  <span className="text-[11px] font-semibold tracking-wider uppercase text-slate-400 block mb-1">24h High</span>
+                  <div className="font-bold text-slate-200">{formatPrice(coinDetails.market_data.high_24h.usd)}</div>
                 </div>
-                <div>
-                  <span className="text-gray-500">24h最低</span>
-                  <div className="font-medium">{formatPrice(coinDetails.market_data.low_24h.usd)}</div>
+                <div className="bg-white/5 rounded-lg p-2.5 border border-white/5">
+                  <span className="text-[11px] font-semibold tracking-wider uppercase text-slate-400 block mb-1">24h Low</span>
+                  <div className="font-bold text-slate-200">{formatPrice(coinDetails.market_data.low_24h.usd)}</div>
                 </div>
               </div>
             </div>
 
             {/* 时间范围选择 */}
-            <div className="bg-white px-4 py-2 border-b">
-              <div className="mb-2">
-                <div className="text-xs text-gray-500 mb-1">时间范围</div>
+            <div className="bg-slate-800/80 px-4 py-3 rounded-xl mx-3 border border-white/10 shadow-lg shadow-black/20">
+              <div className="mb-3">
+                <div className="text-[11px] font-semibold tracking-wider uppercase text-slate-400 mb-2">Timeframe</div>
                 <div className="flex space-x-2">
                   {[7, 30, 90, 365].map((days) => (
                     <button
                       key={days}
                       onClick={() => setTimeframe(days)}
-                      className={`px-3 py-1 rounded text-sm font-medium ${
+                      className={`btn-glass px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
                         timeframe === days
-                          ? 'bg-blue-500 text-white'
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                          ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30 shadow-md shadow-blue-500/10'
+                          : 'bg-white/5 text-slate-300 border border-white/5 hover:bg-white/10 hover:text-white'
                       }`}
                     >
-                      {days === 7 ? '7天' : days === 30 ? '30天' : days === 90 ? '90天' : '1年'}
+                      {days === 7 ? '7D' : days === 30 ? '1M' : days === 90 ? '3M' : '1Y'}
                     </button>
                   ))}
                 </div>
               </div>
-              <div>
-                <div className="text-xs text-gray-500 mb-1">K线周期</div>
+              <div className="pt-2 border-t border-white/5 mt-3">
+                <div className="text-[11px] font-semibold tracking-wider uppercase text-slate-400 mb-2">Interval</div>
                 <div className="flex space-x-2">
                   <button
                     onClick={() => setChartInterval('daily')}
-                    className={`px-3 py-1 rounded text-sm font-medium ${
+                    className={`btn-glass px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
                       chartInterval === 'daily'
-                        ? 'bg-green-500 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-md shadow-emerald-500/10'
+                        : 'bg-white/5 text-slate-300 border border-white/5 hover:bg-white/10 hover:text-white'
                     }`}
                   >
-                    日线
+                    Daily
                   </button>
                   <button
                     onClick={() => setChartInterval('weekly')}
-                    className={`px-3 py-1 rounded text-sm font-medium ${
+                    className={`btn-glass px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
                       chartInterval === 'weekly'
-                        ? 'bg-green-500 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-md shadow-emerald-500/10'
+                        : 'bg-white/5 text-slate-300 border border-white/5 hover:bg-white/10 hover:text-white'
                     }`}
                   >
-                    周线
+                    Weekly
                   </button>
                 </div>
               </div>
             </div>
 
             {/* K线图 */}
-            <div className="bg-white p-4">
-              <h3 className="text-sm font-medium text-gray-700 mb-3">价格走势</h3>
-              <div ref={chartContainerRef} className="w-full" style={{ height: '300px' }} />
+            <div className="bg-slate-800/80 p-4 rounded-xl mx-3 border border-white/10 shadow-lg shadow-black/20">
+              <h3 className="text-[11px] font-semibold tracking-wider uppercase text-slate-400 mb-3">Price Chart</h3>
+              <div ref={chartContainerRef} className="w-full rounded-lg overflow-hidden" style={{ height: '300px' }} />
             </div>
 
             {/* 描述 */}
             {coinDetails.description?.en && (
-              <div className="bg-white p-4">
-                <h3 className="text-sm font-medium text-gray-700 mb-2">项目介绍</h3>
-                <p className="text-sm text-gray-600 leading-relaxed">
+              <div className="bg-slate-800/80 p-4 rounded-xl mx-3 mb-2 border border-white/10 shadow-lg shadow-black/20">
+                <h3 className="text-[11px] font-semibold tracking-wider uppercase text-slate-400 mb-2">About</h3>
+                <p className="text-xs text-slate-300 leading-relaxed font-normal">
                   {coinDetails.description.en.split('.')[0]}.
                 </p>
               </div>
