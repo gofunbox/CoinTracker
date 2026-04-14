@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Coin, WatchlistItem, SearchResult, BackgroundMessage, ApiResponse } from '../types';
 import CoinDetail from './CoinDetail';
+import Settings from './Settings';
 
 const App: React.FC = () => {
   const [watchlistCoins, setWatchlistCoins] = useState<Coin[]>([]);
@@ -12,6 +13,16 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [selectedCoin, setSelectedCoin] = useState<{ id: string; name: string } | null>(null);
   const [refreshSuccess, setRefreshSuccess] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [refreshCooldown, setRefreshCooldown] = useState(0);
+
+  // 倒计时副作用
+  useEffect(() => {
+    if (refreshCooldown > 0) {
+      const timer = setTimeout(() => setRefreshCooldown(c => c - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [refreshCooldown]);
 
   // 发送消息到背景脚本
   const sendMessage = (message: BackgroundMessage): Promise<ApiResponse<any>> => {
@@ -191,6 +202,11 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
+  // 如果显示设置页
+  if (showSettings) {
+    return <Settings onBack={() => setShowSettings(false)} />;
+  }
+
   // 如果选择了币种，显示详情页
   if (selectedCoin) {
     return (
@@ -211,22 +227,46 @@ const App: React.FC = () => {
           <h1 className="text-lg font-bold text-white tracking-wide">
             <span className="text-blue-500">Coin</span>Tracker
           </h1>
-          {/* 刷新按钮移至头部 */}
-          {activeTab === 'watchlist' && (
+          
+          <div className="flex items-center space-x-2">
+            {/* 刷新按钮移至头部 */}
+            {activeTab === 'watchlist' && (
+              <button
+                onClick={() => {
+                  if (refreshCooldown === 0) {
+                    loadWatchlistPrices(true);
+                    setRefreshCooldown(10);
+                  }
+                }}
+                disabled={isLoading || refreshCooldown > 0}
+                className={`flex items-center justify-center text-xs font-bold px-3 py-1.5 rounded-full transition-all ${
+                  refreshSuccess
+                    ? 'text-emerald-400 bg-emerald-500/10'
+                    : 'text-slate-300 hover:bg-slate-800 bg-slate-800/50'
+                } disabled:opacity-50 border border-slate-700 hover:border-slate-600 min-w-[36px]`}
+              >
+                {refreshCooldown > 0 ? (
+                  <span className="text-[10px] tabular-nums font-mono">{refreshCooldown}s</span>
+                ) : (
+                  <svg className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                )}
+              </button>
+            )}
+            
+            {/* 设置按钮 */}
             <button
-              onClick={() => loadWatchlistPrices(true)}
-              disabled={isLoading}
-              className={`flex items-center text-xs font-bold px-3 py-1.5 rounded-full transition-all ${
-                refreshSuccess
-                  ? 'text-emerald-400 bg-emerald-500/10'
-                  : 'text-slate-300 hover:bg-slate-800 bg-slate-800/50'
-              } disabled:opacity-50 border border-slate-700 hover:border-slate-600`}
+               onClick={() => setShowSettings(true)}
+               className="text-slate-400 hover:text-white p-1.5 rounded-full hover:bg-white/10 transition-all border border-transparent"
+               title="高级设置"
             >
-              <svg className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
             </button>
-          )}
+          </div>
         </div>
         
         {/* 标签切换 */}

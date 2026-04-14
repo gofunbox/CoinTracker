@@ -10,6 +10,13 @@ const DEFAULT_WATCHLIST: WatchlistItem[] = [
   { coinId: 'binancecoin', addedAt: Date.now() }
 ];
 
+// Initialize API key
+chrome.storage.local.get(['coinGeckoApiKey']).then(result => {
+  if (result.coinGeckoApiKey) {
+    CoinGeckoService.setApiKey(result.coinGeckoApiKey);
+  }
+});
+
 // 初始化默认观察列表
 chrome.runtime.onInstalled.addListener(async () => {
   console.log('Extension installed/updated, setting up storage...');
@@ -72,8 +79,35 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     case 'GET_COIN_DETAILS':
       handleGetCoinDetails(message.coinId, sendResponse);
       return true;
+
+    case 'SAVE_API_KEY':
+      handleSaveApiKey(message.apiKey || '', sendResponse);
+      return true;
+
+    case 'GET_API_KEY':
+      handleGetApiKey(sendResponse);
+      return true;
   }
 });
+
+async function handleSaveApiKey(apiKey: string, sendResponse: (response: any) => void) {
+  try {
+    await chrome.storage.local.set({ coinGeckoApiKey: apiKey });
+    CoinGeckoService.setApiKey(apiKey);
+    sendResponse({ success: true });
+  } catch (error) {
+    sendResponse({ success: false, error: 'Failed to save API key' });
+  }
+}
+
+async function handleGetApiKey(sendResponse: (response: any) => void) {
+  try {
+    const { coinGeckoApiKey } = await chrome.storage.local.get(['coinGeckoApiKey']);
+    sendResponse({ success: true, data: coinGeckoApiKey || '' });
+  } catch (error) {
+    sendResponse({ success: false, error: 'Failed to get API key' });
+  }
+}
 
 async function handleGetWatchlistPrices(forceRefresh: boolean, sendResponse: (response: any) => void) {
   try {

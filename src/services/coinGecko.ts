@@ -7,11 +7,11 @@ const cache = new Map<string, { data: any; timestamp: number; ttl: number }>();
 
 // 缓存时间配置（毫秒）
 const CACHE_TTL = {
-  COINS: 5 * 60 * 1000,        // 币种列表: 5分钟
-  SEARCH: 30 * 60 * 1000,      // 搜索结果: 30分钟
-  TRENDING: 60 * 60 * 1000,    // 热门币种: 1小时
-  HISTORY: 15 * 60 * 1000,     // 历史数据: 15分钟
-  DETAILS: 10 * 60 * 1000,     // 币种详情: 10分钟
+  COINS: 2.5 * 60 * 1000,      // 币种列表: 2.5分钟
+  SEARCH: 15 * 60 * 1000,      // 搜索结果: 15分钟
+  TRENDING: 30 * 60 * 1000,    // 热门币种: 30分钟
+  HISTORY: 7.5 * 60 * 1000,    // 历史数据: 7.5分钟
+  DETAILS: 5 * 60 * 1000,      // 币种详情: 5分钟
 };
 
 // 请求队列和限制
@@ -82,6 +82,13 @@ class RequestQueue {
 const requestQueue = new RequestQueue();
 
 export class CoinGeckoService {
+  private static apiKey: string = '';
+
+  static setApiKey(key: string) {
+    this.apiKey = key;
+    console.log('CoinGecko API key updated.');
+  }
+
   // 缓存辅助函数
   private static getCacheKey(url: string): string {
     return btoa(url.replace(/[^a-zA-Z0-9]/g, '_')); // 安全的base64编码
@@ -133,7 +140,13 @@ export class CoinGeckoService {
       
       try {
         console.log('Making API request to:', url);
-        const response = await fetch(url);
+        
+        const headers: HeadersInit = {};
+        if (this.apiKey) {
+          headers['x-cg-demo-api-key'] = this.apiKey;
+        }
+
+        const response = await fetch(url, { headers });
         
         if (!response.ok) {
           if (response.status === 429) {

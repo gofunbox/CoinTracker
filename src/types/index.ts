@@ -37,7 +37,8 @@ export interface ApiResponse<T> {
 
 // 背景脚本消息类型
 export interface BackgroundMessage {
-  type: 'GET_WATCHLIST_PRICES' | 'SEARCH_COINS' | 'ADD_TO_WATCHLIST' | 'REMOVE_FROM_WATCHLIST' | 'GET_COIN_HISTORY' | 'GET_COIN_DETAILS' | 'PING';
+  type: 'GET_WATCHLIST_PRICES' | 'SEARCH_COINS' | 'ADD_TO_WATCHLIST' | 'REMOVE_FROM_WATCHLIST' | 'GET_COIN_HISTORY' | 'GET_COIN_DETAILS' | 'PING' | 'SAVE_API_KEY' | 'GET_API_KEY';
+  apiKey?: string;
   query?: string;
   coinId?: string;
   days?: number;
