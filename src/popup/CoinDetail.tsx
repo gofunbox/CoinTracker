@@ -10,9 +10,10 @@ interface CoinDetailProps {
   coinId: string;
   coinName: string;
   onBack: () => void;
+  onPriceUpdate?: (coinId: string, currentPrice: number, priceChange24h: number) => void;
 }
 
-const CoinDetail: React.FC<CoinDetailProps> = ({ coinId, coinName, onBack }) => {
+const CoinDetail: React.FC<CoinDetailProps> = ({ coinId, coinName, onBack, onPriceUpdate }) => {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
@@ -148,6 +149,14 @@ const CoinDetail: React.FC<CoinDetailProps> = ({ coinId, coinName, onBack }) => 
         if (detailsResponse.success && detailsResponse.data) {
           setCoinDetails(detailsResponse.data);
           console.log('CoinDetail: Set coin details:', detailsResponse.data);
+          
+          if (onPriceUpdate && detailsResponse.data.market_data) {
+            onPriceUpdate(
+              coinId,
+              detailsResponse.data.market_data.current_price.usd,
+              detailsResponse.data.market_data.price_change_percentage_24h
+            );
+          }
         } else {
           const errorMsg = detailsResponse.error || '加载数据失败';
           console.error('CoinDetail: API error:', errorMsg);

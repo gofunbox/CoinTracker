@@ -109,13 +109,18 @@ export class CoinGeckoService {
   }
 
   // 带缓存和频率限制的请求函数
-  private static async fetchWithCache(url: string, ttl: number = 300000): Promise<any> {
+  private static async fetchWithCache(url: string, ttl: number = 300000, forceRefresh: boolean = false): Promise<any> {
     const cacheKey = this.getCacheKey(url);
-    const cached = this.getFromCache(cacheKey);
     
-    if (cached) {
-      console.log('Using cached data for:', url);
-      return cached;
+    if (forceRefresh) {
+      cache.delete(cacheKey);
+      console.log('Cache bypassed and cleared for:', url);
+    } else {
+      const cached = this.getFromCache(cacheKey);
+      if (cached) {
+        console.log('Using cached data for:', url);
+        return cached;
+      }
     }
 
     return requestQueue.add(async () => {
@@ -163,9 +168,9 @@ export class CoinGeckoService {
   }
 
   // 获取多个币种的市场数据
-  static async getCoins(coinIds: string[]): Promise<Coin[]> {
+  static async getCoins(coinIds: string[], forceRefresh: boolean = false): Promise<Coin[]> {
     try {
-      console.log('CoinGecko: getCoins called with:', coinIds);
+      console.log('CoinGecko: getCoins called with:', coinIds, 'forceRefresh:', forceRefresh);
       
       if (coinIds.length === 0) {
         console.log('CoinGecko: no coin IDs provided, returning empty array');
@@ -176,7 +181,7 @@ export class CoinGeckoService {
       const url = `${API_BASE}/coins/markets?vs_currency=usd&ids=${ids}&order=market_cap_desc&per_page=100&page=1&sparkline=false&locale=en`;
       console.log('CoinGecko: making request to:', url);
       
-      const data = await this.fetchWithCache(url, CACHE_TTL.COINS);
+      const data = await this.fetchWithCache(url, CACHE_TTL.COINS, forceRefresh);
       console.log('CoinGecko: received data:', data);
       
       const coins = data.map((coin: any) => ({

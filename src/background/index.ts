@@ -50,7 +50,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return false; // 同步响应
       
     case 'GET_WATCHLIST_PRICES':
-      handleGetWatchlistPrices(sendResponse);
+      handleGetWatchlistPrices(message.forceRefresh || false, sendResponse);
       return true; // 保持消息通道开启
       
     case 'SEARCH_COINS':
@@ -75,16 +75,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
-async function handleGetWatchlistPrices(sendResponse: (response: any) => void) {
+async function handleGetWatchlistPrices(forceRefresh: boolean, sendResponse: (response: any) => void) {
   try {
-    console.log('Background: handling GET_WATCHLIST_PRICES');
+    console.log('Background: handling GET_WATCHLIST_PRICES, forceRefresh:', forceRefresh);
     const { watchlist } = await chrome.storage.local.get(['watchlist']);
     console.log('Background: got watchlist from storage:', watchlist);
     
     const coinIds = (watchlist || DEFAULT_WATCHLIST).map((item: WatchlistItem) => item.coinId);
     console.log('Background: coin IDs to fetch:', coinIds);
     
-    const coins = await CoinGeckoService.getCoins(coinIds);
+    const coins = await CoinGeckoService.getCoins(coinIds, forceRefresh);
     console.log('Background: got coins from API:', coins);
     
     if (coins.length === 0) {

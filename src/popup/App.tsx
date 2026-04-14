@@ -45,14 +45,14 @@ const App: React.FC = () => {
   };
 
   // 加载观察列表数据
-  const loadWatchlistPrices = async () => {
+  const loadWatchlistPrices = async (forceRefresh: boolean = false) => {
     try {
-      console.log('Starting to load watchlist prices...');
+      console.log(`Starting to load watchlist prices... (forceRefresh: ${forceRefresh})`);
       setIsLoading(true);
       setError(null);
       setRefreshSuccess(false);
       
-      const response = await sendMessage({ type: 'GET_WATCHLIST_PRICES' });
+      const response = await sendMessage({ type: 'GET_WATCHLIST_PRICES', forceRefresh });
       console.log('Got watchlist response:', response);
       
       if (response.success && response.data) {
@@ -151,6 +151,17 @@ const App: React.FC = () => {
     return percentage >= 0 ? 'text-emerald-400' : 'text-rose-400';
   };
 
+  // 同步列表页面的价格
+  const handlePriceUpdate = (updateCoinId: string, currentPrice: number, priceChange24h: number) => {
+    setWatchlistCoins(prevCoins => 
+      prevCoins.map(coin => 
+        coin.id === updateCoinId 
+        ? { ...coin, current_price: currentPrice, price_change_percentage_24h: priceChange24h }
+        : coin
+      )
+    );
+  };
+
   // 搜索防抖
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -187,6 +198,7 @@ const App: React.FC = () => {
         coinId={selectedCoin.id}
         coinName={selectedCoin.name}
         onBack={() => setSelectedCoin(null)}
+        onPriceUpdate={handlePriceUpdate}
       />
     );
   }
@@ -202,7 +214,7 @@ const App: React.FC = () => {
           {/* 刷新按钮移至头部 */}
           {activeTab === 'watchlist' && (
             <button
-              onClick={loadWatchlistPrices}
+              onClick={() => loadWatchlistPrices(true)}
               disabled={isLoading}
               className={`flex items-center text-xs font-bold px-3 py-1.5 rounded-full transition-all ${
                 refreshSuccess
