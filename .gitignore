@@ -1,10 +1,11 @@
 # Specifies intentionally untracked files to ignore when using Git
 # http://git-scm.com/docs/gitignore
 .idea/
+.env
 .versions/
 .history/
 dist/
 node_modules/
 .DS_Store
 Thumbs.db
-yarn.lock
+yarn.lock\n# Environment Variables\n.env\n

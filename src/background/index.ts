@@ -1,5 +1,6 @@
 import { CoinGeckoService } from '../services/coinGecko';
 import { WatchlistItem } from '../types';
+import { encrypt, decrypt } from '../utils/crypto';
 
 console.log('CoinTracker background script started');
 
@@ -11,9 +12,12 @@ const DEFAULT_WATCHLIST: WatchlistItem[] = [
 ];
 
 // Initialize API key
-chrome.storage.local.get(['coinGeckoApiKey']).then(result => {
+chrome.storage.local.get(['coinGeckoApiKey']).then(async result => {
   if (result.coinGeckoApiKey) {
-    CoinGeckoService.setApiKey(result.coinGeckoApiKey);
+    const decryptedKey = await decrypt(result.coinGeckoApiKey);
+    if (decryptedKey) {
+      CoinGeckoService.setApiKey(decryptedKey);
+    }
   }
 });
 
@@ -92,7 +96,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 async function handleSaveApiKey(apiKey: string, sendResponse: (response: any) => void) {
   try {
-    await chrome.storage.local.set({ coinGeckoApiKey: apiKey });
+    const encryptedKey = apiKey ? await encrypt(apiKey) : '';
+    await chrome.storage.local.set({ coinGeckoApiKey: encryptedKey });
     CoinGeckoService.setApiKey(apiKey);
     sendResponse({ success: true });
   } catch (error) {
@@ -103,7 +108,12 @@ async function handleSaveApiKey(apiKey: string, sendResponse: (response: any) =>
 async function handleGetApiKey(sendResponse: (response: any) => void) {
   try {
     const { coinGeckoApiKey } = await chrome.storage.local.get(['coinGeckoApiKey']);
-    sendResponse({ success: true, data: coinGeckoApiKey || '' });
+    if (coinGeckoApiKey) {
+      const decrypted = await decrypt(coinGeckoApiKey);
+      sendResponse({ success: true, data: decrypted || '' });
+    } else {
+      sendResponse({ success: true, data: '' });
+    }
   } catch (error) {
     sendResponse({ success: false, error: 'Failed to get API key' });
   }

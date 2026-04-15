@@ -2,6 +2,28 @@
 
 一个现代化的加密货币价格追踪Chrome扩展，支持实时价格显示、K线图分析和智能缓存功能。
 
+## 🖼️ UI 预览 (v2.0 极客暗黑屏)
+
+<table>
+  <tr>
+    <td align="center">
+      <img src="assets/screenshots/main.png" alt="观察列表页" width="260"/>
+      <br/>
+      <b>主界面 - 观察列表</b>
+    </td>
+    <td align="center">
+      <img src="assets/screenshots/search.png" alt="搜索与添加" width="260"/>
+      <br/>
+      <b>高级搜索与添加</b>
+    </td>
+    <td align="center">
+      <img src="assets/screenshots/detail.png" alt="行情折线图" width="260"/>
+      <br/>
+      <b>币种趋势详情页</b>
+    </td>
+  </tr>
+</table>
+
 ## 🚀 功能特性
 
 - ✅ **实时价格显示** - 支持多种加密货币的实时价格监控
