@@ -9,6 +9,7 @@ export interface Coin {
   market_cap: number;
   market_cap_rank: number;
   last_updated?: string;
+  amount?: number;
 }
 
 // 观察列表项目
@@ -17,6 +18,7 @@ export interface WatchlistItem {
   addedAt: number;
   alertPrice?: number;
   alertDirection?: 'above' | 'below';
+  amount?: number;
 }
 
 // 搜索结果
@@ -37,13 +39,14 @@ export interface ApiResponse<T> {
 
 // 背景脚本消息类型
 export interface BackgroundMessage {
-  type: 'GET_WATCHLIST_PRICES' | 'SEARCH_COINS' | 'ADD_TO_WATCHLIST' | 'REMOVE_FROM_WATCHLIST' | 'GET_COIN_HISTORY' | 'GET_COIN_DETAILS' | 'PING' | 'SAVE_API_KEY' | 'GET_API_KEY';
+  type: 'GET_WATCHLIST_PRICES' | 'SEARCH_COINS' | 'ADD_TO_WATCHLIST' | 'REMOVE_FROM_WATCHLIST' | 'GET_COIN_HISTORY' | 'GET_COIN_DETAILS' | 'PING' | 'SAVE_API_KEY' | 'GET_API_KEY' | 'UPDATE_COIN_AMOUNT';
   apiKey?: string;
   query?: string;
   coinId?: string;
   days?: number;
   interval?: 'daily' | 'weekly';
   forceRefresh?: boolean;
+  amount?: number;
 }
 
 // Chrome扩展类型声明将由@types/chrome包提供

@@ -9,9 +9,11 @@ const App: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSearching, setIsSearching] = useState(false);
-  const [activeTab, setActiveTab] = useState<'watchlist' | 'search'>('watchlist');
+  const [activeTab, setActiveTab] = useState<'watchlist' | 'search' | 'holdings'>('watchlist');
   const [error, setError] = useState<string | null>(null);
   const [selectedCoin, setSelectedCoin] = useState<{ id: string; name: string } | null>(null);
+  const [editingAmountCoinId, setEditingAmountCoinId] = useState<string | null>(null);
+  const [editAmountValue, setEditAmountValue] = useState('');
   const [refreshSuccess, setRefreshSuccess] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [refreshCooldown, setRefreshCooldown] = useState(0);
@@ -142,6 +144,24 @@ const App: React.FC = () => {
     }
   };
 
+  // 保存持仓数量
+  const handleSaveAmount = async () => {
+    if (!editingAmountCoinId) return;
+    const amount = parseFloat(editAmountValue) || 0;
+    try {
+      const response = await sendMessage({ type: 'UPDATE_COIN_AMOUNT', coinId: editingAmountCoinId, amount });
+      if (response.success) {
+        await loadWatchlistPrices();
+      } else {
+        alert(response.error || '保存失败');
+      }
+    } catch (err) {
+      alert('保存失败');
+    } finally {
+      setEditingAmountCoinId(null);
+    }
+  };
+
   // 格式化价格
   const formatPrice = (price: number): string => {
     if (price >= 1) {
@@ -219,6 +239,9 @@ const App: React.FC = () => {
     );
   }
 
+  const holdings = watchlistCoins.filter(c => c.amount && c.amount > 0);
+  const totalHoldingsUsd = holdings.reduce((total, coin) => total + ((coin.current_price || 0) * (coin.amount || 0)), 0);
+
   return (
     <div className="w-full h-full bg-slate-900 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-slate-100 flex flex-col font-sans">
       {/* 头部 */}
@@ -273,7 +296,7 @@ const App: React.FC = () => {
         <div className="flex px-2 pb-1 gap-2">
           <button
             onClick={() => setActiveTab('watchlist')}
-            className={`flex-1 px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+            className={`flex-1 px-3 py-2 text-sm font-medium rounded-lg transition-all ${
               activeTab === 'watchlist'
                 ? 'bg-blue-500/20 text-blue-400 shadow-sm border border-blue-500/30'
                 : 'text-slate-400 hover:text-white hover:bg-white/5 border border-transparent'
@@ -282,21 +305,95 @@ const App: React.FC = () => {
             观察列表
           </button>
           <button
+            onClick={() => setActiveTab('holdings')}
+            className={`flex-1 px-3 py-2 text-sm font-medium rounded-lg transition-all ${
+              activeTab === 'holdings'
+                ? 'bg-blue-500/20 text-blue-400 shadow-sm border border-blue-500/30'
+                : 'text-slate-400 hover:text-white hover:bg-white/5 border border-transparent'
+            }`}
+          >
+            持仓
+          </button>
+          <button
             onClick={() => setActiveTab('search')}
-            className={`flex-1 px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+            className={`flex-1 px-3 py-2 text-sm font-medium rounded-lg transition-all ${
               activeTab === 'search'
                 ? 'bg-blue-500/20 text-blue-400 shadow-sm border border-blue-500/30'
                 : 'text-slate-400 hover:text-white hover:bg-white/5 border border-transparent'
             }`}
           >
-            搜索添加
+            搜索
           </button>
         </div>
       </div>
 
       {/* 内容区域 */}
       <div className="flex-1 overflow-hidden relative">
-        {activeTab === 'watchlist' ? (
+        {activeTab === 'holdings' ? (
+          <div className="h-full flex flex-col relative z-10 w-full overflow-hidden">
+            <div className="p-5 bg-gradient-to-r from-blue-900/40 to-slate-800/40 border-b border-white/5">
+              <h2 className="text-slate-400 text-sm font-medium mb-1">总资产估值</h2>
+              <div className="text-3xl font-bold text-white tracking-tight shrink-0 flex items-baseline">
+                ${totalHoldingsUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <span className="text-sm text-slate-400 ml-2 font-normal">
+                  ≈ ¥{(totalHoldingsUsd * 7.24).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto scrollbar-thin pb-4">
+              {holdings.length === 0 ? (
+                <div className="p-12 text-center text-slate-500 flex flex-col items-center">
+                  <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mx-auto mb-4 border border-white/5">
+                    <svg className="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                    </svg>
+                  </div>
+                  <p className="text-sm font-medium">暂无持仓</p>
+                  <p className="text-xs mt-2">请在观察列表中点击配置按钮添加持仓数量</p>
+                </div>
+              ) : (
+                holdings.map((coin) => (
+                  <div key={coin.id} className="coin-card mx-3 my-3 p-4 rounded-xl bg-slate-800/80">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center flex-1 cursor-pointer" onClick={() => setSelectedCoin({ id: coin.id, name: coin.name })}>
+                        <img 
+                          src={coin.image} 
+                          alt={coin.name} 
+                          className="w-10 h-10 rounded-full mr-3 shadow-lg shadow-black/40" 
+                          onError={(e) => {
+                            e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMTYiIGN5PSIxNiIgcj0iMTYiIGZpbGw9IiMzMzQxNTUiLz4KPHN2ZyB4PSI4IiB5PSI4IiB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSI+CjxwYXRoIGQ9Ik0xMiAyQzYuNDggMiAyIDYuNDggMiAxMlM2LjQ4IDIyIDEyIDIyIDIyIDE3LjUyIDIyIDEyUzE3LjUyIDIgMTIgMlpNMTIgMTZDMTAuODkgMTYgMTAgMTUuMTEgMTAgMTRTMTAuODkgMTIgMTIgMTJTMTQgMTIuODkgMTQgMTRTMTMuMTEgMTYgMTIgMTZaIiBmaWxsPSIjOThCREZGIi8+Cjwvc3ZnPgo8L3N2Zz4K';
+                          }}
+                        />
+                        <div>
+                          <div className="font-bold text-white text-base">{coin.symbol.toUpperCase()}</div>
+                          <div className="text-xs text-slate-400">数量: {coin.amount}</div>
+                        </div>
+                      </div>
+                      <div className="text-right mr-3 flex flex-col items-end">
+                        <div className="font-bold text-white text-[15px]">
+                          ${((coin.current_price || 0) * (coin.amount || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          {formatPrice(coin.current_price)}
+                        </div>
+                      </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingAmountCoinId(coin.id);
+                          setEditAmountValue((coin.amount || 0).toString());
+                        }}
+                        className="btn-glass bg-blue-500/20 hover:bg-blue-500/40 text-blue-400 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"
+                      >
+                        修改
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        ) : activeTab === 'watchlist' ? (
           <div className="h-full flex flex-col relative z-10">
             {/* 去除了单独的刷新按钮行，以整合到上方头部 */}
 
@@ -372,20 +469,36 @@ const App: React.FC = () => {
                       </div>
                     </div>
                     
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (window.confirm(`确定要从观察列表中移除 ${coin.name} (${coin.symbol.toUpperCase()}) 吗？`)) {
-                          removeFromWatchlist(coin.id);
-                        }
-                      }}
-                      className="text-slate-500 hover:text-rose-400 p-2 rounded-lg hover:bg-rose-500/10 transition-colors"
-                      title="移除"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>
+                    <div className="flex items-center">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingAmountCoinId(coin.id);
+                          setEditAmountValue((coin.amount || 0).toString());
+                        }}
+                        className="text-slate-500 hover:text-blue-400 p-2 rounded-lg hover:bg-blue-500/10 transition-colors"
+                        title="配置持仓"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (window.confirm(`确定要从观察列表中移除 ${coin.name} (${coin.symbol.toUpperCase()}) 吗？`)) {
+                            removeFromWatchlist(coin.id);
+                          }
+                        }}
+                        className="text-slate-500 hover:text-rose-400 p-2 rounded-lg hover:bg-rose-500/10 transition-colors"
+                        title="移除"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -479,6 +592,37 @@ const App: React.FC = () => {
           </div>
         )}
       </div>
+      
+      {/* 填写数量的弹窗 */}
+      {editingAmountCoinId && (
+        <div className="absolute inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-800 rounded-2xl border border-slate-700 p-5 w-full max-w-sm shadow-2xl">
+            <h3 className="text-lg font-bold text-white mb-4">配置持仓数量</h3>
+            <input 
+              type="number"
+              value={editAmountValue}
+              onChange={(e) => setEditAmountValue(e.target.value)}
+              className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 outline-none mb-5"
+              placeholder="输入持有数量"
+              autoFocus
+            />
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setEditingAmountCoinId(null)}
+                className="flex-1 py-2.5 rounded-xl font-medium text-slate-300 bg-slate-700 hover:bg-slate-600 transition-colors"
+              >
+                取消
+              </button>
+              <button 
+                onClick={handleSaveAmount}
+                className="flex-1 py-2.5 rounded-xl font-bold text-white bg-blue-500 hover:bg-blue-400 transition-colors shadow-lg shadow-blue-500/20"
+              >
+                保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

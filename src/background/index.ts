@@ -91,6 +91,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     case 'GET_API_KEY':
       handleGetApiKey(sendResponse);
       return true;
+
+    case 'UPDATE_COIN_AMOUNT':
+      handleUpdateCoinAmount(message.coinId, message.amount, sendResponse);
+      return true;
   }
 });
 
@@ -131,12 +135,20 @@ async function handleGetWatchlistPrices(forceRefresh: boolean, sendResponse: (re
     const coins = await CoinGeckoService.getCoins(coinIds, forceRefresh);
     console.log('Background: got coins from API:', coins);
     
+    const coinsWithAmount = coins.map(coin => {
+      const match = (watchlist || DEFAULT_WATCHLIST).find((w: WatchlistItem) => w.coinId === coin.id);
+      return {
+        ...coin,
+        amount: match?.amount || 0
+      };
+    });
+    
     if (coins.length === 0) {
       console.warn('Background: no coins returned from API');
       sendResponse({ success: false, error: 'API频率限制，请稍后再试' });
     } else {
       console.log('Background: sending successful response with coins');
-      sendResponse({ success: true, data: coins });
+      sendResponse({ success: true, data: coinsWithAmount });
     }
   } catch (error) {
     console.error('Background: error getting watchlist prices:', error);
@@ -249,5 +261,36 @@ async function updatePrices() {
     }
   } catch (error) {
     console.error('Error updating prices:', error);
+  }
+}
+
+async function handleUpdateCoinAmount(coinId: string | undefined, amount: number | undefined, sendResponse: (response: any) => void) {
+  try {
+    if (!coinId) {
+      sendResponse({ success: false, error: 'Missing coinId' });
+      return;
+    }
+    const { watchlist } = await chrome.storage.local.get(['watchlist']);
+    const currentWatchlist: WatchlistItem[] = watchlist || [];
+    
+    let updated = false;
+    const updatedWatchlist = currentWatchlist.map(item => {
+      if (item.coinId === coinId) {
+        updated = true;
+        return { ...item, amount: amount || 0 };
+      }
+      return item;
+    });
+    
+    // 如果不在列表中但需要更新数额（理论上不会走到这），自动添加
+    if (!updated) {
+      updatedWatchlist.push({ coinId, addedAt: Date.now(), amount: amount || 0 });
+    }
+    
+    await chrome.storage.local.set({ watchlist: updatedWatchlist });
+    sendResponse({ success: true });
+  } catch (error) {
+    console.error('Error updating holding amount:', error);
+    sendResponse({ success: false, error: 'Failed to update holding amount' });
   }
 }
