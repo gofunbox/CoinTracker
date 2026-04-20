@@ -17,6 +17,13 @@ const App: React.FC = () => {
   const [refreshSuccess, setRefreshSuccess] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [refreshCooldown, setRefreshCooldown] = useState(0);
+  const [hideBalances, setHideBalances] = useState(() => localStorage.getItem('hideBalances') === 'true');
+  const [timeframe, setTimeframe] = useState<'24h' | '30d' | '1y'>('24h');
+
+  // 保存隐藏金额配置
+  useEffect(() => {
+    localStorage.setItem('hideBalances', hideBalances.toString());
+  }, [hideBalances]);
 
   // 倒计时副作用
   useEffect(() => {
@@ -240,7 +247,28 @@ const App: React.FC = () => {
   }
 
   const holdings = watchlistCoins.filter(c => c.amount && c.amount > 0);
-  const totalHoldingsUsd = holdings.reduce((total, coin) => total + ((coin.current_price || 0) * (coin.amount || 0)), 0);
+  let totalHoldingsUsd = 0;
+  let totalHistoricalUsd = 0;
+
+  holdings.forEach(coin => {
+    const currentVal = (coin.current_price || 0) * (coin.amount || 0);
+    totalHoldingsUsd += currentVal;
+
+    let pctChange = 0;
+    if (timeframe === '24h') pctChange = coin.price_change_percentage_24h_in_currency || coin.price_change_percentage_24h || 0;
+    else if (timeframe === '30d') pctChange = coin.price_change_percentage_30d_in_currency || 0;
+    else if (timeframe === '1y') pctChange = coin.price_change_percentage_1y_in_currency || 0;
+
+    const factor = 1 + (pctChange / 100);
+    const historicalVal = factor > 0 ? currentVal / factor : currentVal;
+    totalHistoricalUsd += historicalVal;
+  });
+
+  const portfolioChangeUsd = totalHoldingsUsd - totalHistoricalUsd;
+  const portfolioChangePct = totalHistoricalUsd > 0 ? (portfolioChangeUsd / totalHistoricalUsd) * 100 : 0;
+  const portfolioChangeIsPositive = portfolioChangeUsd >= 0;
+
+  const renderMasked = (val: string, mask: string = '******') => hideBalances ? mask : val;
 
   return (
     <div className="w-full h-full bg-slate-900 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-slate-100 flex flex-col font-sans">
@@ -332,13 +360,46 @@ const App: React.FC = () => {
         {activeTab === 'holdings' ? (
           <div className="h-full flex flex-col relative z-10 w-full overflow-hidden">
             <div className="p-5 bg-gradient-to-r from-blue-900/40 to-slate-800/40 border-b border-white/5">
-              <h2 className="text-slate-400 text-sm font-medium mb-1">总资产估值</h2>
+              <div className="flex justify-between items-center mb-2">
+                <h2 className="text-slate-400 text-sm font-medium flex items-center">
+                  总资产估值
+                  <button 
+                    onClick={() => setHideBalances(!hideBalances)} 
+                    className="ml-2 text-slate-500 hover:text-slate-300 transition-colors focus:outline-none"
+                    title={hideBalances ? "显示金额" : "隐藏金额"}
+                  >
+                    {hideBalances ? (
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
+                    ) : (
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                    )}
+                  </button>
+                </h2>
+                
+                <div className="flex bg-black/20 rounded-lg p-0.5 border border-white/5">
+                  <button onClick={() => setTimeframe('24h')} className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all ${timeframe === '24h' ? 'bg-blue-500/20 text-blue-400' : 'text-slate-400 hover:text-slate-200'}`}>1天</button>
+                  <button onClick={() => setTimeframe('30d')} className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all ${timeframe === '30d' ? 'bg-blue-500/20 text-blue-400' : 'text-slate-400 hover:text-slate-200'}`}>1月</button>
+                  <button onClick={() => setTimeframe('1y')} className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all ${timeframe === '1y' ? 'bg-blue-500/20 text-blue-400' : 'text-slate-400 hover:text-slate-200'}`}>1年</button>
+                </div>
+              </div>
+
               <div className="text-3xl font-bold text-white tracking-tight shrink-0 flex items-baseline">
-                ${totalHoldingsUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                ${renderMasked(totalHoldingsUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}
                 <span className="text-sm text-slate-400 ml-2 font-normal">
-                  ≈ ¥{(totalHoldingsUsd * 7.24).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  ≈ ¥{renderMasked((totalHoldingsUsd * 7.24).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}
                 </span>
               </div>
+
+              {holdings.length > 0 && (
+                <div className={`mt-2 text-sm font-medium flex items-center ${portfolioChangeIsPositive ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {portfolioChangeIsPositive ? (
+                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 10l7-7m0 0l7 7m-7-7v18" /></svg>
+                  ) : (
+                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 14l-7 7m0 0l-7-7m7 7V3" /></svg>
+                  )}
+                  {portfolioChangeIsPositive ? '+' : ''}${renderMasked(Math.abs(portfolioChangeUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }))} ({portfolioChangeIsPositive ? '+' : ''}{renderMasked(portfolioChangePct.toFixed(2), '***')}%)
+                </div>
+              )}
             </div>
             <div className="flex-1 overflow-y-auto scrollbar-thin pb-4">
               {holdings.length === 0 ? (
@@ -366,12 +427,12 @@ const App: React.FC = () => {
                         />
                         <div>
                           <div className="font-bold text-white text-base">{coin.symbol.toUpperCase()}</div>
-                          <div className="text-xs text-slate-400">数量: {coin.amount}</div>
+                          <div className="text-xs text-slate-400">数量: {renderMasked(coin.amount?.toString() || '0', '***')}</div>
                         </div>
                       </div>
                       <div className="text-right mr-3 flex flex-col items-end">
                         <div className="font-bold text-white text-[15px]">
-                          ${((coin.current_price || 0) * (coin.amount || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          ${renderMasked(((coin.current_price || 0) * (coin.amount || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}
                         </div>
                         <div className="text-xs text-slate-500">
                           {formatPrice(coin.current_price)}

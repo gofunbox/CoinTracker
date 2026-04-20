@@ -1,4 +1,3 @@
-// 基础币种数据接口
 export interface Coin {
   id: string;
   symbol: string;
@@ -6,6 +5,9 @@ export interface Coin {
   image: string;
   current_price: number;
   price_change_percentage_24h: number;
+  price_change_percentage_24h_in_currency?: number;
+  price_change_percentage_30d_in_currency?: number;
+  price_change_percentage_1y_in_currency?: number;
   market_cap: number;
   market_cap_rank: number;
   last_updated?: string;

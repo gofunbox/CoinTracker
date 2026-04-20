@@ -191,7 +191,7 @@ export class CoinGeckoService {
       }
       
       const ids = coinIds.join(',');
-      const url = `${API_BASE}/coins/markets?vs_currency=usd&ids=${ids}&order=market_cap_desc&per_page=100&page=1&sparkline=false&locale=en`;
+      const url = `${API_BASE}/coins/markets?vs_currency=usd&ids=${ids}&order=market_cap_desc&per_page=100&page=1&sparkline=false&price_change_percentage=24h,30d,1y&locale=en`;
       console.log('CoinGecko: making request to:', url);
       
       const data = await this.fetchWithCache(url, CACHE_TTL.COINS, forceRefresh);
@@ -204,6 +204,9 @@ export class CoinGeckoService {
         image: coin.image,
         current_price: coin.current_price || 0,
         price_change_percentage_24h: coin.price_change_percentage_24h || 0,
+        price_change_percentage_24h_in_currency: coin.price_change_percentage_24h_in_currency || 0,
+        price_change_percentage_30d_in_currency: coin.price_change_percentage_30d_in_currency || 0,
+        price_change_percentage_1y_in_currency: coin.price_change_percentage_1y_in_currency || 0,
         market_cap: coin.market_cap || 0,
         market_cap_rank: coin.market_cap_rank || 0,
         last_updated: coin.last_updated
