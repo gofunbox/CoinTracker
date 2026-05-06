@@ -12,7 +12,13 @@ export interface Coin {
   market_cap_rank: number;
   last_updated?: string;
   amount?: number;
+  alertPrice?: number;
+  alertDirection?: 'above' | 'below';
+  alertCurrency?: SupportedCurrency;
 }
+
+export type SupportedCurrency = 'usd' | 'cny' | 'hkd' | 'eur';
+export type WatchlistSort = 'rank' | 'priceChange' | 'holdingValue' | 'name';
 
 // 观察列表项目
 export interface WatchlistItem {
@@ -20,6 +26,7 @@ export interface WatchlistItem {
   addedAt: number;
   alertPrice?: number;
   alertDirection?: 'above' | 'below';
+  alertCurrency?: SupportedCurrency;
   amount?: number;
 }
 
@@ -41,7 +48,7 @@ export interface ApiResponse<T> {
 
 // 背景脚本消息类型
 export interface BackgroundMessage {
-  type: 'GET_WATCHLIST_PRICES' | 'SEARCH_COINS' | 'ADD_TO_WATCHLIST' | 'REMOVE_FROM_WATCHLIST' | 'GET_COIN_HISTORY' | 'GET_COIN_DETAILS' | 'PING' | 'SAVE_API_KEY' | 'GET_API_KEY' | 'UPDATE_COIN_AMOUNT';
+  type: 'GET_WATCHLIST_PRICES' | 'SEARCH_COINS' | 'GET_TRENDING_COINS' | 'ADD_TO_WATCHLIST' | 'REMOVE_FROM_WATCHLIST' | 'GET_COIN_HISTORY' | 'GET_COIN_DETAILS' | 'PING' | 'SAVE_API_KEY' | 'GET_API_KEY' | 'UPDATE_COIN_AMOUNT' | 'UPDATE_COIN_CONFIG';
   apiKey?: string;
   query?: string;
   coinId?: string;
@@ -49,6 +56,10 @@ export interface BackgroundMessage {
   interval?: 'daily' | 'weekly';
   forceRefresh?: boolean;
   amount?: number;
+  alertPrice?: number;
+  alertDirection?: 'above' | 'below';
+  alertCurrency?: SupportedCurrency;
+  vsCurrency?: SupportedCurrency;
 }
 
 // Chrome扩展类型声明将由@types/chrome包提供

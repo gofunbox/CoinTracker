@@ -1,22 +1,24 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { BackgroundMessage, ApiResponse } from '../types';
+import { BackgroundMessage, ApiResponse, SupportedCurrency } from '../types';
 
 // 动态导入图表库类型
 type IChartApi = any;
 type ISeriesApi<T> = any;
-type CandlestickData = any;
+type LineData = any;
 
 interface CoinDetailProps {
   coinId: string;
   coinName: string;
   onBack: () => void;
   onPriceUpdate?: (coinId: string, currentPrice: number, priceChange24h: number) => void;
+  vsCurrency: SupportedCurrency;
+  formatPrice: (price: number) => string;
 }
 
-const CoinDetail: React.FC<CoinDetailProps> = ({ coinId, coinName, onBack, onPriceUpdate }) => {
+const CoinDetail: React.FC<CoinDetailProps> = ({ coinId, coinName, onBack, onPriceUpdate, vsCurrency, formatPrice }) => {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  const areaSeriesRef = useRef<ISeriesApi<'Area'> | null>(null);
   const chartDataRef = useRef<any[] | null>(null);
   
   const [loading, setLoading] = useState(true);
@@ -104,17 +106,15 @@ const CoinDetail: React.FC<CoinDetailProps> = ({ coinId, coinName, onBack, onPri
         },
       });
 
-      const candlestickSeries = chart.addCandlestickSeries({
-        upColor: '#22c55e',
-        downColor: '#ef4444',
-        borderDownColor: '#ef4444',
-        borderUpColor: '#22c55e',
-        wickDownColor: '#ef4444',
-        wickUpColor: '#22c55e',
+      const areaSeries = chart.addAreaSeries({
+        lineColor: '#38bdf8',
+        topColor: 'rgba(56, 189, 248, 0.35)',
+        bottomColor: 'rgba(56, 189, 248, 0.02)',
+        lineWidth: 2,
       });
 
       chartRef.current = chart;
-      candlestickSeriesRef.current = candlestickSeries;
+      areaSeriesRef.current = areaSeries;
       
       console.log('CoinDetail: Chart initialized successfully');
       
@@ -122,7 +122,7 @@ const CoinDetail: React.FC<CoinDetailProps> = ({ coinId, coinName, onBack, onPri
       if (chartDataRef.current && chartDataRef.current.length > 0) {
         console.log('CoinDetail: Setting saved chart data after init:', chartDataRef.current.length, 'items');
         console.log('CoinDetail: First data point:', chartDataRef.current[0]);
-        candlestickSeries.setData(chartDataRef.current);
+        areaSeries.setData(chartDataRef.current);
         chart.timeScale().fitContent();
       }
     } catch (error) {
@@ -153,7 +153,7 @@ const CoinDetail: React.FC<CoinDetailProps> = ({ coinId, coinName, onBack, onPri
           if (onPriceUpdate && detailsResponse.data.market_data) {
             onPriceUpdate(
               coinId,
-              detailsResponse.data.market_data.current_price.usd,
+              detailsResponse.data.market_data.current_price[vsCurrency],
               detailsResponse.data.market_data.price_change_percentage_24h
             );
           }
@@ -166,7 +166,7 @@ const CoinDetail: React.FC<CoinDetailProps> = ({ coinId, coinName, onBack, onPri
 
       // 加载历史数据（用于图表）
       try {
-        const historyResponse = await sendMessage({ type: 'GET_COIN_HISTORY', coinId, days: timeframe, interval: chartInterval });
+        const historyResponse = await sendMessage({ type: 'GET_COIN_HISTORY', coinId, days: timeframe, interval: chartInterval, vsCurrency });
         console.log('CoinDetail: History response:', historyResponse);
 
         // 保存并更新图表数据
@@ -176,10 +176,10 @@ const CoinDetail: React.FC<CoinDetailProps> = ({ coinId, coinName, onBack, onPri
           chartDataRef.current = prices;
           
           // 如果图表已经初始化，直接设置数据
-          if (candlestickSeriesRef.current && chartRef.current) {
+          if (areaSeriesRef.current && chartRef.current) {
             console.log('CoinDetail: Setting chart data immediately');
             console.log('CoinDetail: First data point:', prices[0]);
-            candlestickSeriesRef.current.setData(prices as CandlestickData[]);
+            areaSeriesRef.current.setData(prices as LineData[]);
             chartRef.current.timeScale().fitContent();
           }
         }
@@ -208,10 +208,10 @@ const CoinDetail: React.FC<CoinDetailProps> = ({ coinId, coinName, onBack, onPri
         console.log('CoinDetail: Cleaning up chart...');
         chartRef.current.remove();
         chartRef.current = null;
-        candlestickSeriesRef.current = null;
+        areaSeriesRef.current = null;
       }
     };
-  }, [coinId]);
+  }, [coinId, vsCurrency]);
 
   // 当数据加载完成后初始化图表
   useEffect(() => {
@@ -234,26 +234,19 @@ const CoinDetail: React.FC<CoinDetailProps> = ({ coinId, coinName, onBack, onPri
     }
   }, [timeframe, chartInterval]);
 
-  const formatPrice = (price: number): string => {
-    if (price >= 1) {
-      return `$${price.toFixed(2)}`;
-    } else {
-      return `$${price.toFixed(6)}`;
-    }
-  };
-
   const formatPercentage = (percentage: number): string => {
     const sign = percentage >= 0 ? '+' : '';
     return `${sign}${percentage.toFixed(2)}%`;
   };
 
   const formatMarketCap = (value: number): string => {
+    const formatted = formatPrice(value);
     if (value >= 1e9) {
-      return `$${(value / 1e9).toFixed(2)}B`;
+      return `${formatPrice(value / 1e9)}B`;
     } else if (value >= 1e6) {
-      return `$${(value / 1e6).toFixed(2)}M`;
+      return `${formatPrice(value / 1e6)}M`;
     } else {
-      return `$${value.toLocaleString()}`;
+      return formatted;
     }
   };
 
@@ -304,7 +297,7 @@ const CoinDetail: React.FC<CoinDetailProps> = ({ coinId, coinName, onBack, onPri
             <div className="bg-slate-800/80 p-5 rounded-xl mx-3 border border-white/10 shadow-lg shadow-black/20">
               <div className="flex items-center justify-between mb-4">
                 <div className="text-3xl font-black text-white tracking-tight">
-                  {formatPrice(coinDetails.market_data.current_price.usd)}
+                  {formatPrice(coinDetails.market_data.current_price[vsCurrency])}
                 </div>
                 <div className={`text-sm font-bold px-2 py-1 rounded-md ${
                   coinDetails.market_data.price_change_percentage_24h >= 0 
@@ -322,15 +315,15 @@ const CoinDetail: React.FC<CoinDetailProps> = ({ coinId, coinName, onBack, onPri
                 </div>
                 <div className="bg-white/5 rounded-lg p-2.5 border border-white/5">
                   <span className="text-[11px] font-semibold tracking-wider uppercase text-slate-400 block mb-1">Market Cap</span>
-                  <div className="font-bold text-white">{formatMarketCap(coinDetails.market_data.market_cap.usd)}</div>
+                  <div className="font-bold text-white">{formatMarketCap(coinDetails.market_data.market_cap[vsCurrency])}</div>
                 </div>
                 <div className="bg-white/5 rounded-lg p-2.5 border border-white/5">
                   <span className="text-[11px] font-semibold tracking-wider uppercase text-slate-400 block mb-1">24h High</span>
-                  <div className="font-bold text-slate-200">{formatPrice(coinDetails.market_data.high_24h.usd)}</div>
+                  <div className="font-bold text-slate-200">{formatPrice(coinDetails.market_data.high_24h[vsCurrency])}</div>
                 </div>
                 <div className="bg-white/5 rounded-lg p-2.5 border border-white/5">
                   <span className="text-[11px] font-semibold tracking-wider uppercase text-slate-400 block mb-1">24h Low</span>
-                  <div className="font-bold text-slate-200">{formatPrice(coinDetails.market_data.low_24h.usd)}</div>
+                  <div className="font-bold text-slate-200">{formatPrice(coinDetails.market_data.low_24h[vsCurrency])}</div>
                 </div>
               </div>
             </div>
@@ -384,7 +377,7 @@ const CoinDetail: React.FC<CoinDetailProps> = ({ coinId, coinName, onBack, onPri
 
             {/* K线图 */}
             <div className="bg-slate-800/80 p-4 rounded-xl mx-3 border border-white/10 shadow-lg shadow-black/20">
-              <h3 className="text-[11px] font-semibold tracking-wider uppercase text-slate-400 mb-3">Price Chart</h3>
+              <h3 className="text-[11px] font-semibold tracking-wider uppercase text-slate-400 mb-3">Price Trend</h3>
               <div ref={chartContainerRef} className="w-full rounded-lg overflow-hidden" style={{ height: '300px' }} />
             </div>
 

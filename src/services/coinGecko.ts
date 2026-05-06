@@ -1,4 +1,4 @@
-import { Coin, SearchResult } from '../types';
+import { Coin, SearchResult, SupportedCurrency } from '../types';
 
 const API_BASE = 'https://api.coingecko.com/api/v3';
 
@@ -181,7 +181,7 @@ export class CoinGeckoService {
   }
 
   // 获取多个币种的市场数据
-  static async getCoins(coinIds: string[], forceRefresh: boolean = false): Promise<Coin[]> {
+  static async getCoins(coinIds: string[], forceRefresh: boolean = false, vsCurrency: SupportedCurrency = 'usd'): Promise<Coin[]> {
     try {
       console.log('CoinGecko: getCoins called with:', coinIds, 'forceRefresh:', forceRefresh);
       
@@ -191,7 +191,7 @@ export class CoinGeckoService {
       }
       
       const ids = coinIds.join(',');
-      const url = `${API_BASE}/coins/markets?vs_currency=usd&ids=${ids}&order=market_cap_desc&per_page=100&page=1&sparkline=false&price_change_percentage=24h,30d,1y&locale=en`;
+      const url = `${API_BASE}/coins/markets?vs_currency=${vsCurrency}&ids=${ids}&order=market_cap_desc&per_page=100&page=1&sparkline=false&price_change_percentage=24h,30d,1y&locale=en`;
       console.log('CoinGecko: making request to:', url);
       
       const data = await this.fetchWithCache(url, CACHE_TTL.COINS, forceRefresh);
@@ -242,7 +242,7 @@ export class CoinGeckoService {
   }
 
   // 获取热门币种
-  static async getTrendingCoins(): Promise<Coin[]> {
+  static async getTrendingCoins(vsCurrency: SupportedCurrency = 'usd'): Promise<Coin[]> {
     try {
       const url = `${API_BASE}/search/trending`;
       const data = await this.fetchWithCache(url, CACHE_TTL.TRENDING);
@@ -250,26 +250,22 @@ export class CoinGeckoService {
       const trendingIds = (data.coins || []).map((coin: any) => coin.item.id).slice(0, 10);
       
       if (trendingIds.length === 0) return [];
-      return this.getCoins(trendingIds);
+      return this.getCoins(trendingIds, false, vsCurrency);
     } catch (error) {
       console.error('Error fetching trending coins:', error);
       return [];
     }
   }
 
-  // 获取币种历史价格数据（用于K线图）
-  static async getCoinHistory(coinId: string, days: number = 30, interval: 'daily' | 'weekly' = 'daily'): Promise<any> {
+  // 获取币种历史价格数据（用于趋势图）
+  static async getCoinHistory(coinId: string, days: number = 30, interval: 'daily' | 'weekly' = 'daily', vsCurrency: SupportedCurrency = 'usd'): Promise<any> {
     try {
-      const url = `${API_BASE}/coins/${coinId}/market_chart?vs_currency=usd&days=${days}&interval=${interval}`;
+      const url = `${API_BASE}/coins/${coinId}/market_chart?vs_currency=${vsCurrency}&days=${days}&interval=${interval}`;
       const data = await this.fetchWithCache(url, CACHE_TTL.HISTORY);
       
-      // 转换为图表所需的格式
-      const chartData = data.prices.map((price: [number, number], index: number) => ({
+      const chartData = data.prices.map((price: [number, number]) => ({
         time: Math.floor(price[0] / 1000),
-        open: index > 0 ? data.prices[index - 1][1] : price[1],
-        high: price[1] * 1.02,
-        low: price[1] * 0.98,
-        close: price[1]
+        value: price[1]
       }));
       
       return {

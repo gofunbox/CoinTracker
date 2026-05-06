@@ -1,29 +1,50 @@
 import React, { useState, useEffect } from 'react';
-import { Coin, WatchlistItem, SearchResult, BackgroundMessage, ApiResponse } from '../types';
+import { Coin, SearchResult, BackgroundMessage, ApiResponse, SupportedCurrency, WatchlistSort } from '../types';
 import CoinDetail from './CoinDetail';
 import Settings from './Settings';
 
 const App: React.FC = () => {
   const [watchlistCoins, setWatchlistCoins] = useState<Coin[]>([]);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [trendingCoins, setTrendingCoins] = useState<Coin[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSearching, setIsSearching] = useState(false);
+  const [isTrendingLoading, setIsTrendingLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'watchlist' | 'search' | 'holdings'>('watchlist');
   const [error, setError] = useState<string | null>(null);
   const [selectedCoin, setSelectedCoin] = useState<{ id: string; name: string } | null>(null);
   const [editingAmountCoinId, setEditingAmountCoinId] = useState<string | null>(null);
   const [editAmountValue, setEditAmountValue] = useState('');
+  const [editAlertPrice, setEditAlertPrice] = useState('');
+  const [editAlertDirection, setEditAlertDirection] = useState<'above' | 'below'>('above');
   const [refreshSuccess, setRefreshSuccess] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [refreshCooldown, setRefreshCooldown] = useState(0);
   const [hideBalances, setHideBalances] = useState(() => localStorage.getItem('hideBalances') === 'true');
   const [timeframe, setTimeframe] = useState<'24h' | '30d' | '1y'>('24h');
+  const [vsCurrency, setVsCurrency] = useState<SupportedCurrency>(() => (localStorage.getItem('vsCurrency') as SupportedCurrency) || 'usd');
+  const [watchlistSort, setWatchlistSort] = useState<WatchlistSort>(() => (localStorage.getItem('watchlistSort') as WatchlistSort) || 'rank');
+
+  const currencyLabels: Record<SupportedCurrency, { code: string; locale: string }> = {
+    usd: { code: 'USD', locale: 'en-US' },
+    cny: { code: 'CNY', locale: 'zh-CN' },
+    hkd: { code: 'HKD', locale: 'zh-HK' },
+    eur: { code: 'EUR', locale: 'de-DE' }
+  };
 
   // 保存隐藏金额配置
   useEffect(() => {
     localStorage.setItem('hideBalances', hideBalances.toString());
   }, [hideBalances]);
+
+  useEffect(() => {
+    localStorage.setItem('vsCurrency', vsCurrency);
+  }, [vsCurrency]);
+
+  useEffect(() => {
+    localStorage.setItem('watchlistSort', watchlistSort);
+  }, [watchlistSort]);
 
   // 倒计时副作用
   useEffect(() => {
@@ -72,7 +93,7 @@ const App: React.FC = () => {
       setError(null);
       setRefreshSuccess(false);
       
-      const response = await sendMessage({ type: 'GET_WATCHLIST_PRICES', forceRefresh });
+      const response = await sendMessage({ type: 'GET_WATCHLIST_PRICES', forceRefresh, vsCurrency });
       console.log('Got watchlist response:', response);
       
       if (response.success && response.data) {
@@ -119,6 +140,20 @@ const App: React.FC = () => {
     }
   };
 
+  const loadTrendingCoins = async () => {
+    try {
+      setIsTrendingLoading(true);
+      const response = await sendMessage({ type: 'GET_TRENDING_COINS', vsCurrency });
+      if (response.success && response.data) {
+        setTrendingCoins(response.data.slice(0, 8));
+      }
+    } catch (err) {
+      setTrendingCoins([]);
+    } finally {
+      setIsTrendingLoading(false);
+    }
+  };
+
   // 添加到观察列表
   const addToWatchlist = async (coinId: string) => {
     try {
@@ -155,8 +190,16 @@ const App: React.FC = () => {
   const handleSaveAmount = async () => {
     if (!editingAmountCoinId) return;
     const amount = parseFloat(editAmountValue) || 0;
+    const alertPrice = parseFloat(editAlertPrice) || 0;
     try {
-      const response = await sendMessage({ type: 'UPDATE_COIN_AMOUNT', coinId: editingAmountCoinId, amount });
+      const response = await sendMessage({
+        type: 'UPDATE_COIN_CONFIG',
+        coinId: editingAmountCoinId,
+        amount,
+        alertPrice,
+        alertDirection: alertPrice > 0 ? editAlertDirection : undefined,
+        alertCurrency: vsCurrency
+      });
       if (response.success) {
         await loadWatchlistPrices();
       } else {
@@ -169,14 +212,25 @@ const App: React.FC = () => {
     }
   };
 
-  // 格式化价格
-  const formatPrice = (price: number): string => {
-    if (price >= 1) {
-      return `$${price.toFixed(2)}`;
-    } else {
-      return `$${price.toFixed(6)}`;
-    }
+  const openCoinConfig = (coin: Coin) => {
+    setEditingAmountCoinId(coin.id);
+    setEditAmountValue((coin.amount || 0).toString());
+    setEditAlertPrice(coin.alertPrice ? coin.alertPrice.toString() : '');
+    setEditAlertDirection(coin.alertDirection || 'above');
   };
+
+  // 格式化价格
+  const formatPriceFor = (price: number, currency: SupportedCurrency = vsCurrency): string => {
+    const meta = currencyLabels[currency];
+    return new Intl.NumberFormat(meta.locale, {
+      style: 'currency',
+      currency: meta.code,
+      minimumFractionDigits: price >= 1 ? 2 : 4,
+      maximumFractionDigits: price >= 1 ? 2 : 6
+    }).format(price || 0);
+  };
+
+  const formatPrice = (price: number): string => formatPriceFor(price, vsCurrency);
 
   // 格式化百分比
   const formatPercentage = (percentage: number): string => {
@@ -211,6 +265,12 @@ const App: React.FC = () => {
     return () => clearTimeout(timer);
   }, [searchQuery, activeTab]);
 
+  useEffect(() => {
+    if (activeTab === 'search' && !searchQuery.trim() && trendingCoins.length === 0) {
+      loadTrendingCoins();
+    }
+  }, [activeTab, searchQuery, vsCurrency]);
+
   // 初始化和定期更新
   useEffect(() => {
     console.log('App component mounted, checking service worker...');
@@ -227,7 +287,7 @@ const App: React.FC = () => {
     }, 120000);
     
     return () => clearInterval(interval);
-  }, []);
+  }, [vsCurrency]);
 
   // 如果显示设置页
   if (showSettings) {
@@ -242,6 +302,8 @@ const App: React.FC = () => {
         coinName={selectedCoin.name}
         onBack={() => setSelectedCoin(null)}
         onPriceUpdate={handlePriceUpdate}
+        vsCurrency={vsCurrency}
+        formatPrice={formatPrice}
       />
     );
   }
@@ -269,6 +331,13 @@ const App: React.FC = () => {
   const portfolioChangeIsPositive = portfolioChangeUsd >= 0;
 
   const renderMasked = (val: string, mask: string = '******') => hideBalances ? mask : val;
+  const sortedHoldings = [...holdings].sort((a, b) => ((b.current_price || 0) * (b.amount || 0)) - ((a.current_price || 0) * (a.amount || 0)));
+  const sortedWatchlistCoins = [...watchlistCoins].sort((a, b) => {
+    if (watchlistSort === 'priceChange') return (b.price_change_percentage_24h || 0) - (a.price_change_percentage_24h || 0);
+    if (watchlistSort === 'holdingValue') return ((b.current_price || 0) * (b.amount || 0)) - ((a.current_price || 0) * (a.amount || 0));
+    if (watchlistSort === 'name') return a.name.localeCompare(b.name);
+    return (a.market_cap_rank || 999999) - (b.market_cap_rank || 999999);
+  });
 
   return (
     <div className="w-full h-full bg-slate-900 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-slate-100 flex flex-col font-sans">
@@ -280,6 +349,20 @@ const App: React.FC = () => {
           </h1>
           
           <div className="flex items-center space-x-2">
+            <select
+              value={vsCurrency}
+              onChange={(e) => {
+                setTrendingCoins([]);
+                setVsCurrency(e.target.value as SupportedCurrency);
+              }}
+              className="bg-slate-800/80 border border-slate-700 rounded-lg text-[11px] font-bold text-slate-200 px-2 py-1.5 outline-none focus:border-blue-500/50"
+              title="显示法币"
+            >
+              <option value="usd">USD</option>
+              <option value="cny">CNY</option>
+              <option value="hkd">HKD</option>
+              <option value="eur">EUR</option>
+            </select>
             {/* 刷新按钮移至头部 */}
             {activeTab === 'watchlist' && (
               <button
@@ -384,10 +467,7 @@ const App: React.FC = () => {
               </div>
 
               <div className="text-3xl font-bold text-white tracking-tight shrink-0 flex items-baseline">
-                ${renderMasked(totalHoldingsUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}
-                <span className="text-sm text-slate-400 ml-2 font-normal">
-                  ≈ ¥{renderMasked((totalHoldingsUsd * 7.24).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}
-                </span>
+                {renderMasked(formatPrice(totalHoldingsUsd))}
               </div>
 
               {holdings.length > 0 && (
@@ -397,7 +477,7 @@ const App: React.FC = () => {
                   ) : (
                     <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 14l-7 7m0 0l-7-7m7 7V3" /></svg>
                   )}
-                  {portfolioChangeIsPositive ? '+' : ''}${renderMasked(Math.abs(portfolioChangeUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }))} ({portfolioChangeIsPositive ? '+' : ''}{renderMasked(portfolioChangePct.toFixed(2), '***')}%)
+                  {portfolioChangeIsPositive ? '+' : ''}{renderMasked(formatPrice(Math.abs(portfolioChangeUsd)))} ({portfolioChangeIsPositive ? '+' : ''}{renderMasked(portfolioChangePct.toFixed(2), '***')}%)
                 </div>
               )}
             </div>
@@ -413,7 +493,7 @@ const App: React.FC = () => {
                   <p className="text-xs mt-2">请在观察列表中点击配置按钮添加持仓数量</p>
                 </div>
               ) : (
-                holdings.map((coin) => (
+                sortedHoldings.map((coin) => (
                   <div key={coin.id} className="coin-card mx-3 my-3 p-4 rounded-xl bg-slate-800/80">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center flex-1 cursor-pointer" onClick={() => setSelectedCoin({ id: coin.id, name: coin.name })}>
@@ -432,7 +512,7 @@ const App: React.FC = () => {
                       </div>
                       <div className="text-right mr-3 flex flex-col items-end">
                         <div className="font-bold text-white text-[15px]">
-                          ${renderMasked(((coin.current_price || 0) * (coin.amount || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}
+                          {renderMasked(formatPrice((coin.current_price || 0) * (coin.amount || 0)))}
                         </div>
                         <div className="text-xs text-slate-500">
                           {formatPrice(coin.current_price)}
@@ -441,8 +521,7 @@ const App: React.FC = () => {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          setEditingAmountCoinId(coin.id);
-                          setEditAmountValue((coin.amount || 0).toString());
+                          openCoinConfig(coin);
                         }}
                         className="btn-glass bg-blue-500/20 hover:bg-blue-500/40 text-blue-400 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"
                       >
@@ -487,11 +566,27 @@ const App: React.FC = () => {
               {!isLoading && !error && watchlistCoins.length > 0 && (
                 <div className="px-4 py-2 mb-2 mx-3 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center">
                   <span className="text-lg mr-2">💡</span>
-                  <p className="text-xs font-medium text-blue-300">点击币种卡片查看详情走势图</p>
+                  <p className="text-xs font-medium text-blue-300">点击币种卡片查看详情走势图，齿轮可配置持仓和价格提醒</p>
                 </div>
               )}
 
-              {!isLoading && !error && watchlistCoins.map((coin) => (
+              {!isLoading && !error && watchlistCoins.length > 0 && (
+                <div className="mx-3 mb-3 flex items-center justify-between">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">排序</span>
+                  <select
+                    value={watchlistSort}
+                    onChange={(e) => setWatchlistSort(e.target.value as WatchlistSort)}
+                    className="bg-slate-800 border border-slate-700 rounded-lg text-xs text-slate-200 px-2 py-1.5 outline-none focus:border-blue-500/50"
+                  >
+                    <option value="rank">市值排名</option>
+                    <option value="priceChange">24h 涨幅</option>
+                    <option value="holdingValue">持仓市值</option>
+                    <option value="name">名称</option>
+                  </select>
+                </div>
+              )}
+
+              {!isLoading && !error && sortedWatchlistCoins.map((coin) => (
                 <div key={coin.id} className="coin-card mx-3 mb-3 p-4 rounded-xl bg-slate-800/80">
                   <div className="flex items-center justify-between">
                     <div 
@@ -513,6 +608,11 @@ const App: React.FC = () => {
                         </div>
                         <div className="text-[10px] uppercase font-bold tracking-wider text-slate-500 mt-0.5">
                           Rank #{coin.market_cap_rank}
+                          {coin.alertPrice && coin.alertDirection && (
+                            <span className="ml-2 text-amber-400 normal-case">
+                              提醒 {coin.alertDirection === 'above' ? '高于' : '低于'} {formatPriceFor(coin.alertPrice, coin.alertCurrency || vsCurrency)}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -534,8 +634,7 @@ const App: React.FC = () => {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          setEditingAmountCoinId(coin.id);
-                          setEditAmountValue((coin.amount || 0).toString());
+                          openCoinConfig(coin);
                         }}
                         className="text-slate-500 hover:text-blue-400 p-2 rounded-lg hover:bg-blue-500/10 transition-colors"
                         title="配置持仓"
@@ -599,13 +698,54 @@ const App: React.FC = () => {
               )}
 
               {!isSearching && !searchQuery && (
-                <div className="p-12 mt-4 text-center text-slate-500">
-                  <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mx-auto mb-4 border border-white/5">
-                     <svg className="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
+                <div className="px-3 pb-4">
+                  <div className="px-1 pb-2 flex items-center justify-between">
+                    <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">热门币种</h2>
+                    {isTrendingLoading && <span className="text-[11px] text-slate-500">加载中...</span>}
                   </div>
-                  <p className="text-sm font-medium">请输入币种名称或代码以开始</p>
+                  {!isTrendingLoading && trendingCoins.length === 0 && (
+                    <div className="p-8 text-center text-sm text-slate-500">暂无热门数据</div>
+                  )}
+                  {trendingCoins.map((coin) => (
+                    <div key={coin.id} className="coin-card mb-2 p-3.5 rounded-xl bg-slate-800/80">
+                      <div className="flex items-center justify-between">
+                        <div
+                          className="flex items-center flex-1 cursor-pointer"
+                          onClick={() => setSelectedCoin({ id: coin.id, name: coin.name })}
+                        >
+                          <img
+                            src={coin.image}
+                            alt={coin.name}
+                            className="w-8 h-8 rounded-full mr-3 shadow-md shadow-black/40"
+                          />
+                          <div className="flex-1">
+                            <div className="flex items-baseline">
+                              <span className="font-bold text-white tracking-wide">{coin.symbol.toUpperCase()}</span>
+                              <span className="ml-2 text-xs font-medium text-slate-400">{coin.name}</span>
+                            </div>
+                            <div className="text-[10px] uppercase font-bold tracking-wider text-slate-500 mt-0.5">
+                              Rank #{coin.market_cap_rank}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right mr-3">
+                          <div className="text-xs font-bold text-white">{formatPrice(coin.current_price)}</div>
+                          <div className={`text-[11px] font-semibold ${coin.price_change_percentage_24h >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            {formatPercentage(coin.price_change_percentage_24h)}
+                          </div>
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            addToWatchlist(coin.id);
+                          }}
+                          className="btn-glass bg-blue-500 hover:bg-blue-400 text-white px-3 py-1.5 rounded-lg text-xs font-bold tracking-wide shadow-lg shadow-blue-500/20"
+                        >
+                          关注
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
 
@@ -654,22 +794,50 @@ const App: React.FC = () => {
         )}
       </div>
       
-      {/* 填写数量的弹窗 */}
+      {/* 配置持仓与提醒 */}
       {editingAmountCoinId && (
         <div className="absolute inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-800 rounded-2xl border border-slate-700 p-5 w-full max-w-sm shadow-2xl">
-            <h3 className="text-lg font-bold text-white mb-4">配置持仓数量</h3>
+            <h3 className="text-lg font-bold text-white mb-4">配置资产</h3>
+            <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">持仓数量</label>
             <input 
               type="number"
               value={editAmountValue}
               onChange={(e) => setEditAmountValue(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 outline-none mb-5"
+              className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 outline-none mb-4"
               placeholder="输入持有数量"
               autoFocus
             />
+            <div className="grid grid-cols-[1fr_auto] gap-2 mb-2">
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">提醒价格</label>
+                <input
+                  type="number"
+                  value={editAlertPrice}
+                  onChange={(e) => setEditAlertPrice(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500/50 outline-none"
+                  placeholder={`${currencyLabels[vsCurrency].code} 价格，留空关闭`}
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">方向</label>
+                <select
+                  value={editAlertDirection}
+                  onChange={(e) => setEditAlertDirection(e.target.value as 'above' | 'below')}
+                  className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-3 text-white outline-none focus:border-amber-500/50"
+                >
+                  <option value="above">高于</option>
+                  <option value="below">低于</option>
+                </select>
+              </div>
+            </div>
+            <p className="text-[11px] text-slate-500 mb-5">提醒将按当前显示法币 {currencyLabels[vsCurrency].code} 保存，后台每 10 分钟检查一次。</p>
             <div className="flex gap-3">
               <button 
-                onClick={() => setEditingAmountCoinId(null)}
+                onClick={() => {
+                  setEditingAmountCoinId(null);
+                  setEditAlertPrice('');
+                }}
                 className="flex-1 py-2.5 rounded-xl font-medium text-slate-300 bg-slate-700 hover:bg-slate-600 transition-colors"
               >
                 取消

@@ -1,5 +1,5 @@
 import { CoinGeckoService } from '../services/coinGecko';
-import { WatchlistItem } from '../types';
+import { SupportedCurrency, WatchlistItem } from '../types';
 import { encrypt, decrypt } from '../utils/crypto';
 
 console.log('CoinTracker background script started');
@@ -61,11 +61,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return false; // 同步响应
       
     case 'GET_WATCHLIST_PRICES':
-      handleGetWatchlistPrices(message.forceRefresh || false, sendResponse);
+      handleGetWatchlistPrices(message.forceRefresh || false, sendResponse, message.vsCurrency || 'usd');
       return true; // 保持消息通道开启
       
     case 'SEARCH_COINS':
       handleSearchCoins(message.query, sendResponse);
+      return true;
+
+    case 'GET_TRENDING_COINS':
+      handleGetTrendingCoins(message.vsCurrency || 'usd', sendResponse);
       return true;
       
     case 'ADD_TO_WATCHLIST':
@@ -77,7 +81,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return true;
 
     case 'GET_COIN_HISTORY':
-      handleGetCoinHistory(message.coinId, message.days, message.interval, sendResponse);
+      handleGetCoinHistory(message.coinId, message.days, message.interval, sendResponse, message.vsCurrency || 'usd');
       return true;
 
     case 'GET_COIN_DETAILS':
@@ -94,6 +98,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     case 'UPDATE_COIN_AMOUNT':
       handleUpdateCoinAmount(message.coinId, message.amount, sendResponse);
+      return true;
+
+    case 'UPDATE_COIN_CONFIG':
+      handleUpdateCoinConfig(message, sendResponse);
       return true;
   }
 });
@@ -123,7 +131,7 @@ async function handleGetApiKey(sendResponse: (response: any) => void) {
   }
 }
 
-async function handleGetWatchlistPrices(forceRefresh: boolean, sendResponse: (response: any) => void) {
+async function handleGetWatchlistPrices(forceRefresh: boolean, sendResponse: (response: any) => void, vsCurrency: SupportedCurrency = 'usd') {
   try {
     console.log('Background: handling GET_WATCHLIST_PRICES, forceRefresh:', forceRefresh);
     const { watchlist } = await chrome.storage.local.get(['watchlist']);
@@ -132,14 +140,17 @@ async function handleGetWatchlistPrices(forceRefresh: boolean, sendResponse: (re
     const coinIds = (watchlist || DEFAULT_WATCHLIST).map((item: WatchlistItem) => item.coinId);
     console.log('Background: coin IDs to fetch:', coinIds);
     
-    const coins = await CoinGeckoService.getCoins(coinIds, forceRefresh);
+    const coins = await CoinGeckoService.getCoins(coinIds, forceRefresh, vsCurrency);
     console.log('Background: got coins from API:', coins);
     
     const coinsWithAmount = coins.map(coin => {
       const match = (watchlist || DEFAULT_WATCHLIST).find((w: WatchlistItem) => w.coinId === coin.id);
       return {
         ...coin,
-        amount: match?.amount || 0
+        amount: match?.amount || 0,
+        alertPrice: match?.alertPrice,
+        alertDirection: match?.alertDirection,
+        alertCurrency: match?.alertCurrency
       };
     });
     
@@ -156,6 +167,16 @@ async function handleGetWatchlistPrices(forceRefresh: boolean, sendResponse: (re
       ? 'API请求过于频繁，请稍后再试' 
       : '获取价格失败，请检查网络连接';
     sendResponse({ success: false, error: errorMessage });
+  }
+}
+
+async function handleGetTrendingCoins(vsCurrency: SupportedCurrency, sendResponse: (response: any) => void) {
+  try {
+    const results = await CoinGeckoService.getTrendingCoins(vsCurrency);
+    sendResponse({ success: true, data: results });
+  } catch (error) {
+    console.error('Error getting trending coins:', error);
+    sendResponse({ success: false, error: 'Failed to fetch trending coins' });
   }
 }
 
@@ -213,9 +234,9 @@ async function handleRemoveFromWatchlist(coinId: string, sendResponse: (response
   }
 }
 
-async function handleGetCoinHistory(coinId: string, days: number = 30, interval: 'daily' | 'weekly' = 'daily', sendResponse: (response: any) => void) {
+async function handleGetCoinHistory(coinId: string, days: number = 30, interval: 'daily' | 'weekly' = 'daily', sendResponse: (response: any) => void, vsCurrency: SupportedCurrency = 'usd') {
   try {
-    const data = await CoinGeckoService.getCoinHistory(coinId, days, interval);
+    const data = await CoinGeckoService.getCoinHistory(coinId, days, interval, vsCurrency);
     sendResponse({ success: true, data });
   } catch (error) {
     console.error('Error getting coin history:', error);
@@ -236,15 +257,19 @@ async function handleGetCoinDetails(coinId: string, sendResponse: (response: any
 async function updatePrices() {
   try {
     const { watchlist } = await chrome.storage.local.get(['watchlist']);
-    const coinIds = (watchlist || DEFAULT_WATCHLIST).map((item: WatchlistItem) => item.coinId);
-    
-    const coins = await CoinGeckoService.getCoins(coinIds);
-    
-    // 检查价格警报
-    for (const coin of coins) {
-      const watchlistItem = (watchlist || DEFAULT_WATCHLIST).find((item: WatchlistItem) => item.coinId === coin.id);
+    const watchlistItems: WatchlistItem[] = watchlist || DEFAULT_WATCHLIST;
+    const alertItems = watchlistItems.filter(item => item.alertPrice && item.alertDirection);
+    const currencies = Array.from(new Set(alertItems.map(item => item.alertCurrency || 'usd'))) as SupportedCurrency[];
+
+    for (const currency of currencies) {
+      const itemsForCurrency = alertItems.filter(item => (item.alertCurrency || 'usd') === currency);
+      const coinIds = itemsForCurrency.map(item => item.coinId);
+      const coins = await CoinGeckoService.getCoins(coinIds, false, currency);
       
-      if (watchlistItem && watchlistItem.alertPrice && watchlistItem.alertDirection) {
+      for (const coin of coins) {
+        const watchlistItem = itemsForCurrency.find((item: WatchlistItem) => item.coinId === coin.id);
+        if (!watchlistItem || !watchlistItem.alertPrice || !watchlistItem.alertDirection) continue;
+
         const shouldAlert = 
           (watchlistItem.alertDirection === 'above' && coin.current_price >= watchlistItem.alertPrice) ||
           (watchlistItem.alertDirection === 'below' && coin.current_price <= watchlistItem.alertPrice);
@@ -252,9 +277,9 @@ async function updatePrices() {
         if (shouldAlert) {
           chrome.notifications.create({
             type: 'basic',
-            iconUrl: 'icons/icon-48.png',
+            iconUrl: 'icons/icon.svg',
             title: 'CoinTracker Price Alert',
-            message: `${coin.name} is now $${coin.current_price.toFixed(2)}`
+            message: `${coin.name} is now ${currency.toUpperCase()} ${coin.current_price.toFixed(2)}`
           });
         }
       }
@@ -292,5 +317,50 @@ async function handleUpdateCoinAmount(coinId: string | undefined, amount: number
   } catch (error) {
     console.error('Error updating holding amount:', error);
     sendResponse({ success: false, error: 'Failed to update holding amount' });
+  }
+}
+
+async function handleUpdateCoinConfig(message: any, sendResponse: (response: any) => void) {
+  try {
+    if (!message.coinId) {
+      sendResponse({ success: false, error: 'Missing coinId' });
+      return;
+    }
+
+    const { watchlist } = await chrome.storage.local.get(['watchlist']);
+    const currentWatchlist: WatchlistItem[] = watchlist || [];
+    const alertPrice = typeof message.alertPrice === 'number' && message.alertPrice > 0 ? message.alertPrice : undefined;
+    const alertDirection = alertPrice ? message.alertDirection : undefined;
+    const alertCurrency = alertPrice ? (message.alertCurrency || 'usd') : undefined;
+
+    let updated = false;
+    const updatedWatchlist = currentWatchlist.map(item => {
+      if (item.coinId !== message.coinId) return item;
+      updated = true;
+      return {
+        ...item,
+        amount: message.amount || 0,
+        alertPrice,
+        alertDirection,
+        alertCurrency
+      };
+    });
+
+    if (!updated) {
+      updatedWatchlist.push({
+        coinId: message.coinId,
+        addedAt: Date.now(),
+        amount: message.amount || 0,
+        alertPrice,
+        alertDirection,
+        alertCurrency
+      });
+    }
+
+    await chrome.storage.local.set({ watchlist: updatedWatchlist });
+    sendResponse({ success: true });
+  } catch (error) {
+    console.error('Error updating coin config:', error);
+    sendResponse({ success: false, error: 'Failed to update coin config' });
   }
 }
