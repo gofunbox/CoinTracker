@@ -5,6 +5,7 @@ import Settings from './Settings';
 
 const App: React.FC = () => {
   const [watchlistCoins, setWatchlistCoins] = useState<Coin[]>([]);
+  const [approxCoins, setApproxCoins] = useState<Coin[]>([]);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [trendingCoins, setTrendingCoins] = useState<Coin[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -24,6 +25,7 @@ const App: React.FC = () => {
   const [hideBalances, setHideBalances] = useState(() => localStorage.getItem('hideBalances') === 'true');
   const [timeframe, setTimeframe] = useState<'24h' | '30d' | '1y'>('24h');
   const [vsCurrency, setVsCurrency] = useState<SupportedCurrency>(() => (localStorage.getItem('vsCurrency') as SupportedCurrency) || 'usd');
+  const [approxCurrency, setApproxCurrency] = useState<SupportedCurrency>(() => (localStorage.getItem('approxCurrency') as SupportedCurrency) || 'cny');
   const [watchlistSort, setWatchlistSort] = useState<WatchlistSort>(() => (localStorage.getItem('watchlistSort') as WatchlistSort) || 'rank');
 
   const currencyLabels: Record<SupportedCurrency, { code: string; locale: string }> = {
@@ -41,6 +43,10 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('vsCurrency', vsCurrency);
   }, [vsCurrency]);
+
+  useEffect(() => {
+    localStorage.setItem('approxCurrency', approxCurrency);
+  }, [approxCurrency]);
 
   useEffect(() => {
     localStorage.setItem('watchlistSort', watchlistSort);
@@ -151,6 +157,22 @@ const App: React.FC = () => {
       setTrendingCoins([]);
     } finally {
       setIsTrendingLoading(false);
+    }
+  };
+
+  const loadApproxPrices = async () => {
+    try {
+      if (approxCurrency === vsCurrency) {
+        setApproxCoins(watchlistCoins);
+        return;
+      }
+
+      const response = await sendMessage({ type: 'GET_WATCHLIST_PRICES', vsCurrency: approxCurrency });
+      if (response.success && response.data) {
+        setApproxCoins(response.data);
+      }
+    } catch (err) {
+      setApproxCoins([]);
     }
   };
 
@@ -271,6 +293,12 @@ const App: React.FC = () => {
     }
   }, [activeTab, searchQuery, vsCurrency]);
 
+  useEffect(() => {
+    if (activeTab === 'holdings') {
+      loadApproxPrices();
+    }
+  }, [activeTab, approxCurrency, vsCurrency, watchlistCoins]);
+
   // 初始化和定期更新
   useEffect(() => {
     console.log('App component mounted, checking service worker...');
@@ -329,6 +357,8 @@ const App: React.FC = () => {
   const portfolioChangeUsd = totalHoldingsUsd - totalHistoricalUsd;
   const portfolioChangePct = totalHistoricalUsd > 0 ? (portfolioChangeUsd / totalHistoricalUsd) * 100 : 0;
   const portfolioChangeIsPositive = portfolioChangeUsd >= 0;
+  const approxTotalHoldings = (approxCurrency === vsCurrency ? holdings : approxCoins.filter(c => c.amount && c.amount > 0))
+    .reduce((sum, coin) => sum + ((coin.current_price || 0) * (coin.amount || 0)), 0);
 
   const renderMasked = (val: string, mask: string = '******') => hideBalances ? mask : val;
   const sortedHoldings = [...holdings].sort((a, b) => ((b.current_price || 0) * (b.amount || 0)) - ((a.current_price || 0) * (a.amount || 0)));
@@ -468,6 +498,22 @@ const App: React.FC = () => {
 
               <div className="text-3xl font-bold text-white tracking-tight shrink-0 flex items-baseline">
                 {renderMasked(formatPrice(totalHoldingsUsd))}
+              </div>
+              <div className="mt-1 flex items-center gap-2 text-sm text-slate-400">
+                <span>
+                  ≈ {renderMasked(formatPriceFor(approxTotalHoldings, approxCurrency))}
+                </span>
+                <select
+                  value={approxCurrency}
+                  onChange={(e) => setApproxCurrency(e.target.value as SupportedCurrency)}
+                  className="bg-black/20 border border-white/5 rounded-md text-[11px] font-bold text-slate-300 px-1.5 py-0.5 outline-none focus:border-blue-500/50"
+                  title="约等于币种"
+                >
+                  <option value="usd">USD</option>
+                  <option value="cny">CNY</option>
+                  <option value="hkd">HKD</option>
+                  <option value="eur">EUR</option>
+                </select>
               </div>
 
               {holdings.length > 0 && (
