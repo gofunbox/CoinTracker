@@ -20,6 +20,13 @@ export interface Coin {
 export type SupportedCurrency = 'usd' | 'cny' | 'hkd' | 'eur';
 export type WatchlistSort = 'rank' | 'priceChange' | 'holdingValue' | 'name';
 
+export interface SupabaseCloudStatus {
+  configured: boolean;
+  signedIn: boolean;
+  email?: string;
+  userId?: string;
+}
+
 // 观察列表项目
 export interface WatchlistItem {
   coinId: string;
@@ -48,7 +55,7 @@ export interface ApiResponse<T> {
 
 // 背景脚本消息类型
 export interface BackgroundMessage {
-  type: 'GET_WATCHLIST_PRICES' | 'SEARCH_COINS' | 'GET_TRENDING_COINS' | 'ADD_TO_WATCHLIST' | 'REMOVE_FROM_WATCHLIST' | 'GET_COIN_HISTORY' | 'GET_COIN_DETAILS' | 'PING' | 'SAVE_API_KEY' | 'GET_API_KEY' | 'UPDATE_COIN_AMOUNT' | 'UPDATE_COIN_CONFIG';
+  type: 'GET_WATCHLIST_PRICES' | 'SEARCH_COINS' | 'GET_TRENDING_COINS' | 'ADD_TO_WATCHLIST' | 'REMOVE_FROM_WATCHLIST' | 'GET_COIN_HISTORY' | 'GET_COIN_DETAILS' | 'PING' | 'SAVE_API_KEY' | 'GET_API_KEY' | 'UPDATE_COIN_AMOUNT' | 'UPDATE_COIN_CONFIG' | 'GET_SUPABASE_STATUS' | 'SAVE_SUPABASE_CONFIG' | 'SUPABASE_SIGN_UP' | 'SUPABASE_SIGN_IN' | 'SUPABASE_SIGN_OUT' | 'SUPABASE_UPLOAD_LOCAL' | 'SUPABASE_DOWNLOAD_CLOUD' | 'SUPABASE_RESEND_CONFIRMATION' | 'SUPABASE_COMPLETE_AUTH';
   apiKey?: string;
   query?: string;
   coinId?: string;
@@ -60,6 +67,12 @@ export interface BackgroundMessage {
   alertDirection?: 'above' | 'below';
   alertCurrency?: SupportedCurrency;
   vsCurrency?: SupportedCurrency;
+  supabaseUrl?: string;
+  supabaseAnonKey?: string;
+  email?: string;
+  password?: string;
+  accessToken?: string;
+  refreshToken?: string;
 }
 
 // Chrome扩展类型声明将由@types/chrome包提供

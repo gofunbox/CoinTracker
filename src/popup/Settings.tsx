@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BackgroundMessage, ApiResponse } from '../types';
+import { BackgroundMessage, ApiResponse, SupabaseCloudStatus } from '../types';
 
 interface SettingsProps {
   onBack: () => void;
@@ -10,6 +10,30 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
   const [showKey, setShowKey] = useState(false);
   const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [cloudUrl, setCloudUrl] = useState('');
+  const [cloudAnonKey, setCloudAnonKey] = useState('');
+  const [cloudEmail, setCloudEmail] = useState('');
+  const [cloudPassword, setCloudPassword] = useState('');
+  const [cloudStatus, setCloudStatus] = useState<SupabaseCloudStatus | null>(null);
+  const [cloudMessage, setCloudMessage] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [isCloudBusy, setIsCloudBusy] = useState(false);
+
+  const sendMessage = <T,>(message: BackgroundMessage): Promise<ApiResponse<T>> => {
+    return new Promise((resolve) => {
+      chrome.runtime.sendMessage(message, (response: ApiResponse<T>) => {
+        resolve(response || { success: false, error: 'No response received' });
+      });
+    });
+  };
+
+  const loadCloudStatus = async () => {
+    const response = await sendMessage<SupabaseCloudStatus & { supabaseUrl?: string; supabaseAnonKey?: string }>({ type: 'GET_SUPABASE_STATUS' });
+    if (response.success && response.data) {
+      setCloudStatus(response.data);
+      setCloudUrl(response.data.supabaseUrl || '');
+      setCloudAnonKey(response.data.supabaseAnonKey || '');
+    }
+  };
 
   useEffect(() => {
     // Load current API key
@@ -19,6 +43,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
           setApiKey(response.data);
         }
       });
+      loadCloudStatus();
     }
   }, []);
 
@@ -34,6 +59,51 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
         setStatus({ type: 'error', message: '保存失败，请重试' });
       }
     });
+  };
+
+  const runCloudAction = async (message: BackgroundMessage, successText: string) => {
+    setIsCloudBusy(true);
+    setCloudMessage(null);
+    const response = await sendMessage<any>(message);
+    setIsCloudBusy(false);
+
+    if (response.success) {
+      setCloudMessage({ type: 'success', message: response.data?.message || successText });
+      await loadCloudStatus();
+    } else {
+      setCloudMessage({ type: 'error', message: response.error || '操作失败' });
+    }
+  };
+
+  const handleSaveCloudConfig = () => {
+    runCloudAction({
+      type: 'SAVE_SUPABASE_CONFIG',
+      supabaseUrl: cloudUrl,
+      supabaseAnonKey: cloudAnonKey
+    }, 'Supabase 配置已保存');
+  };
+
+  const handleCloudSignUp = () => {
+    runCloudAction({
+      type: 'SUPABASE_SIGN_UP',
+      email: cloudEmail,
+      password: cloudPassword
+    }, '注册成功，已尝试同步本地数据');
+  };
+
+  const handleCloudSignIn = () => {
+    runCloudAction({
+      type: 'SUPABASE_SIGN_IN',
+      email: cloudEmail,
+      password: cloudPassword
+    }, '登录成功');
+  };
+
+  const handleResendConfirmation = () => {
+    runCloudAction({
+      type: 'SUPABASE_RESEND_CONFIRMATION',
+      email: cloudEmail
+    }, '确认邮件已重新发送，请检查邮箱');
   };
 
   return (
@@ -140,6 +210,138 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
             <li>进入开发者面板 (Developer Dashboard)，点击 "Add New Key"。</li>
             <li>将生成的 Key 复制并粘贴到上方输入框中保存。</li>
           </ol>
+        </div>
+
+        <div className="bg-slate-800/80 rounded-xl p-4 border border-white/10 shadow-lg shadow-black/20">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-bold text-white">Supabase 云同步</h2>
+            <span className={`text-[11px] font-semibold px-2 py-1 rounded-md ${
+              cloudStatus?.signedIn
+                ? 'bg-emerald-500/10 text-emerald-400'
+                : cloudStatus?.configured
+                  ? 'bg-amber-500/10 text-amber-400'
+                  : 'bg-slate-700 text-slate-400'
+            }`}>
+              {cloudStatus?.signedIn ? '已登录' : cloudStatus?.configured ? '已配置' : '未配置'}
+            </span>
+          </div>
+          <p className="text-xs text-slate-400 mb-4 leading-relaxed">
+            Supabase 支持邮箱注册和登录。登录后会把关注列表、持仓数量、提醒设置和加密后的 CoinGecko Token 同步到你的数据库。
+          </p>
+
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">Project URL</label>
+              <input
+                type="url"
+                value={cloudUrl}
+                onChange={(e) => setCloudUrl(e.target.value)}
+                placeholder="https://xxxx.supabase.co"
+                className="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 transition-all"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">Anon Public Key</label>
+              <input
+                type="password"
+                value={cloudAnonKey}
+                onChange={(e) => setCloudAnonKey(e.target.value)}
+                placeholder="eyJhbGciOi..."
+                className="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 transition-all font-mono"
+              />
+            </div>
+
+            <button
+              onClick={handleSaveCloudConfig}
+              disabled={isCloudBusy}
+              className="w-full btn-glass bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-xs font-bold tracking-wide disabled:opacity-50 transition-all"
+            >
+              保存 Supabase 配置
+            </button>
+
+            {cloudStatus?.signedIn ? (
+              <>
+                <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-2">
+                  <p className="text-xs font-semibold text-emerald-300">当前账号</p>
+                  <p className="text-[11px] text-emerald-200/80 mt-0.5">{cloudStatus.email || cloudStatus.userId}</p>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 pt-2">
+                  <button
+                    onClick={() => runCloudAction({ type: 'SUPABASE_UPLOAD_LOCAL' }, '本地数据已上传到云端')}
+                    disabled={isCloudBusy}
+                    className="btn-glass bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 px-2 py-2 rounded-lg text-[11px] font-bold disabled:opacity-50 transition-all"
+                  >
+                    上传本地
+                  </button>
+                  <button
+                    onClick={() => runCloudAction({ type: 'SUPABASE_DOWNLOAD_CLOUD' }, '云端数据已恢复到本地')}
+                    disabled={isCloudBusy}
+                    className="btn-glass bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 px-2 py-2 rounded-lg text-[11px] font-bold disabled:opacity-50 transition-all"
+                  >
+                    下载云端
+                  </button>
+                  <button
+                    onClick={() => runCloudAction({ type: 'SUPABASE_SIGN_OUT' }, '已退出登录')}
+                    disabled={isCloudBusy}
+                    className="btn-glass bg-slate-700 hover:bg-slate-600 text-slate-200 px-2 py-2 rounded-lg text-[11px] font-bold disabled:opacity-50 transition-all"
+                  >
+                    退出
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="grid grid-cols-1 gap-3 pt-2 border-t border-white/5">
+                <input
+                  type="email"
+                  value={cloudEmail}
+                  onChange={(e) => setCloudEmail(e.target.value)}
+                  placeholder="邮箱"
+                  className="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 transition-all"
+                />
+                <input
+                  type="password"
+                  value={cloudPassword}
+                  onChange={(e) => setCloudPassword(e.target.value)}
+                  placeholder="密码"
+                  className="w-full px-3 py-2.5 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 transition-all"
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={handleCloudSignUp}
+                    disabled={isCloudBusy || !cloudEmail || !cloudPassword}
+                    className="btn-glass bg-blue-500 hover:bg-blue-400 text-white px-4 py-2 rounded-lg text-xs font-bold tracking-wide shadow-lg shadow-blue-500/20 disabled:opacity-50 transition-all"
+                  >
+                    注册
+                  </button>
+                  <button
+                    onClick={handleCloudSignIn}
+                    disabled={isCloudBusy || !cloudEmail || !cloudPassword}
+                    className="btn-glass bg-emerald-500 hover:bg-emerald-400 text-white px-4 py-2 rounded-lg text-xs font-bold tracking-wide shadow-lg shadow-emerald-500/20 disabled:opacity-50 transition-all"
+                  >
+                    登录
+                  </button>
+                </div>
+                <button
+                  onClick={handleResendConfirmation}
+                  disabled={isCloudBusy || !cloudEmail}
+                  className="btn-glass bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 px-4 py-2 rounded-lg text-xs font-bold tracking-wide border border-amber-500/20 disabled:opacity-50 transition-all"
+                >
+                  重发确认邮件
+                </button>
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  如果登录提示 Email not confirmed，请先点击邮箱里的确认链接；测试阶段也可以在 Supabase Authentication 的 Email 设置里关闭邮箱确认。
+                </p>
+              </div>
+            )}
+
+            {cloudMessage && (
+              <p className={`text-[11px] ${cloudMessage.type === 'success' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                {cloudMessage.message}
+              </p>
+            )}
+          </div>
         </div>
       </div>
     </div>

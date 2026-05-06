@@ -301,6 +301,27 @@ const App: React.FC = () => {
 
   // 初始化和定期更新
   useEffect(() => {
+    const hash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : '';
+    const params = new URLSearchParams(hash);
+    const accessToken = params.get('access_token');
+    const refreshToken = params.get('refresh_token') || '';
+    const authError = params.get('error_description') || params.get('error');
+
+    if (accessToken) {
+      sendMessage({ type: 'SUPABASE_COMPLETE_AUTH', accessToken, refreshToken })
+        .then(response => {
+          if (response.success) {
+            window.history.replaceState(null, '', window.location.pathname);
+          } else {
+            setError(response.error || 'Supabase 邮箱确认失败');
+          }
+        })
+        .catch(err => setError(err instanceof Error ? err.message : 'Supabase 邮箱确认失败'));
+    } else if (authError) {
+      setError(decodeURIComponent(authError.replace(/\+/g, ' ')));
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+
     console.log('App component mounted, checking service worker...');
     
     // 等待service worker准备就绪

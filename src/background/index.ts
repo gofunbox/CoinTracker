@@ -1,4 +1,5 @@
 import { CoinGeckoService } from '../services/coinGecko';
+import { SupabaseConfig, SupabaseService, SupabaseSession } from '../services/supabase';
 import { SupportedCurrency, WatchlistItem } from '../types';
 import { encrypt, decrypt } from '../utils/crypto';
 
@@ -10,6 +11,12 @@ const DEFAULT_WATCHLIST: WatchlistItem[] = [
   { coinId: 'ethereum', addedAt: Date.now() },
   { coinId: 'binancecoin', addedAt: Date.now() }
 ];
+
+interface StoredSupabaseConfig {
+  url: string;
+  anonKey?: string;
+  encryptedAnonKey?: string;
+}
 
 // Initialize API key
 chrome.storage.local.get(['coinGeckoApiKey']).then(async result => {
@@ -103,6 +110,42 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     case 'UPDATE_COIN_CONFIG':
       handleUpdateCoinConfig(message, sendResponse);
       return true;
+
+    case 'GET_SUPABASE_STATUS':
+      handleGetSupabaseStatus(sendResponse);
+      return true;
+
+    case 'SAVE_SUPABASE_CONFIG':
+      handleSaveSupabaseConfig(message.supabaseUrl || '', message.supabaseAnonKey || '', sendResponse);
+      return true;
+
+    case 'SUPABASE_SIGN_UP':
+      handleSupabaseSignUp(message.email || '', message.password || '', sendResponse);
+      return true;
+
+    case 'SUPABASE_SIGN_IN':
+      handleSupabaseSignIn(message.email || '', message.password || '', sendResponse);
+      return true;
+
+    case 'SUPABASE_RESEND_CONFIRMATION':
+      handleSupabaseResendConfirmation(message.email || '', sendResponse);
+      return true;
+
+    case 'SUPABASE_COMPLETE_AUTH':
+      handleSupabaseCompleteAuth(message.accessToken || '', message.refreshToken || '', sendResponse);
+      return true;
+
+    case 'SUPABASE_SIGN_OUT':
+      handleSupabaseSignOut(sendResponse);
+      return true;
+
+    case 'SUPABASE_UPLOAD_LOCAL':
+      handleSupabaseUploadLocal(sendResponse);
+      return true;
+
+    case 'SUPABASE_DOWNLOAD_CLOUD':
+      handleSupabaseDownloadCloud(sendResponse);
+      return true;
   }
 });
 
@@ -111,6 +154,7 @@ async function handleSaveApiKey(apiKey: string, sendResponse: (response: any) =>
     const encryptedKey = apiKey ? await encrypt(apiKey) : '';
     await chrome.storage.local.set({ coinGeckoApiKey: encryptedKey });
     CoinGeckoService.setApiKey(apiKey);
+    await syncLocalToCloudSilently();
     sendResponse({ success: true });
   } catch (error) {
     sendResponse({ success: false, error: 'Failed to save API key' });
@@ -211,6 +255,7 @@ async function handleAddToWatchlist(coinId: string, sendResponse: (response: any
     
     const updatedWatchlist = [...currentWatchlist, newItem];
     await chrome.storage.local.set({ watchlist: updatedWatchlist });
+    await syncLocalToCloudSilently();
     
     sendResponse({ success: true });
   } catch (error) {
@@ -226,6 +271,7 @@ async function handleRemoveFromWatchlist(coinId: string, sendResponse: (response
     
     const updatedWatchlist = currentWatchlist.filter(item => item.coinId !== coinId);
     await chrome.storage.local.set({ watchlist: updatedWatchlist });
+    await syncLocalToCloudSilently();
     
     sendResponse({ success: true });
   } catch (error) {
@@ -313,6 +359,7 @@ async function handleUpdateCoinAmount(coinId: string | undefined, amount: number
     }
     
     await chrome.storage.local.set({ watchlist: updatedWatchlist });
+    await syncLocalToCloudSilently();
     sendResponse({ success: true });
   } catch (error) {
     console.error('Error updating holding amount:', error);
@@ -358,9 +405,260 @@ async function handleUpdateCoinConfig(message: any, sendResponse: (response: any
     }
 
     await chrome.storage.local.set({ watchlist: updatedWatchlist });
+    await syncLocalToCloudSilently();
     sendResponse({ success: true });
   } catch (error) {
     console.error('Error updating coin config:', error);
     sendResponse({ success: false, error: 'Failed to update coin config' });
+  }
+}
+
+async function getSupabaseAuth(): Promise<{ config?: SupabaseConfig; session?: SupabaseSession }> {
+  const { supabaseConfig, supabaseSession } = await chrome.storage.local.get(['supabaseConfig', 'supabaseSession']);
+  const storedConfig = supabaseConfig as StoredSupabaseConfig | undefined;
+  let config: SupabaseConfig | undefined;
+
+  if (storedConfig?.url) {
+    let anonKey = '';
+    if (storedConfig.encryptedAnonKey) {
+      anonKey = await decrypt(storedConfig.encryptedAnonKey);
+    } else if (storedConfig.anonKey) {
+      anonKey = storedConfig.anonKey;
+      const encryptedAnonKey = await encrypt(anonKey);
+      await chrome.storage.local.set({
+        supabaseConfig: {
+          url: storedConfig.url,
+          encryptedAnonKey
+        }
+      });
+    }
+
+    config = anonKey ? { url: storedConfig.url, anonKey } : undefined;
+  }
+
+  return {
+    config,
+    session: supabaseSession
+  };
+}
+
+async function getCloudPayload(session: SupabaseSession) {
+  const { watchlist, coinGeckoApiKey } = await chrome.storage.local.get(['watchlist', 'coinGeckoApiKey']);
+  return {
+    user_id: session.user.id,
+    watchlist: watchlist || DEFAULT_WATCHLIST,
+    encrypted_api_token: coinGeckoApiKey || undefined
+  };
+}
+
+async function getVerifiedSession(config: SupabaseConfig, session: SupabaseSession): Promise<SupabaseSession> {
+  const user = await SupabaseService.getUser(config, session.access_token);
+  const verifiedSession = { ...session, user };
+  await chrome.storage.local.set({ supabaseSession: verifiedSession });
+  return verifiedSession;
+}
+
+async function syncLocalToCloudSilently() {
+  try {
+    const { config, session } = await getSupabaseAuth();
+    if (!config || !session) return;
+    const verifiedSession = await getVerifiedSession(config, session);
+    await SupabaseService.upsertUserData(config, verifiedSession, await getCloudPayload(verifiedSession));
+  } catch (error) {
+    console.warn('Cloud sync skipped:', error);
+  }
+}
+
+async function handleGetSupabaseStatus(sendResponse: (response: any) => void) {
+  try {
+    const { config, session } = await getSupabaseAuth();
+    sendResponse({
+      success: true,
+      data: {
+        configured: Boolean(config?.url && config?.anonKey),
+        signedIn: Boolean(session?.access_token && session?.user?.id),
+        email: session?.user?.email,
+        userId: session?.user?.id,
+        supabaseUrl: config?.url || '',
+        supabaseAnonKey: config?.anonKey || ''
+      }
+    });
+  } catch (error) {
+    sendResponse({ success: false, error: 'Failed to get cloud status' });
+  }
+}
+
+async function handleSaveSupabaseConfig(supabaseUrl: string, supabaseAnonKey: string, sendResponse: (response: any) => void) {
+  try {
+    const url = supabaseUrl.trim();
+    const anonKey = supabaseAnonKey.trim();
+    const config: SupabaseConfig = {
+      url,
+      anonKey
+    };
+
+    if (!config.url || !config.anonKey) {
+      await chrome.storage.local.remove(['supabaseConfig', 'supabaseSession']);
+      sendResponse({ success: true });
+      return;
+    }
+
+    const encryptedAnonKey = await encrypt(config.anonKey);
+    await chrome.storage.local.set({
+      supabaseConfig: {
+        url: config.url,
+        encryptedAnonKey
+      }
+    });
+    sendResponse({ success: true });
+  } catch (error) {
+    sendResponse({ success: false, error: 'Failed to save Supabase config' });
+  }
+}
+
+async function handleSupabaseSignUp(email: string, password: string, sendResponse: (response: any) => void) {
+  try {
+    const { config } = await getSupabaseAuth();
+    if (!config) {
+      sendResponse({ success: false, error: '请先保存 Supabase 配置' });
+      return;
+    }
+
+    const redirectTo = chrome.runtime.getURL('popup.html');
+    const session = await SupabaseService.signUp(config, email.trim(), password, redirectTo);
+    if (session) {
+      await chrome.storage.local.set({ supabaseSession: session });
+      const verifiedSession = await getVerifiedSession(config, session);
+      await SupabaseService.upsertUserData(config, verifiedSession, await getCloudPayload(verifiedSession));
+      sendResponse({ success: true, data: { signedIn: true, email: session.user.email } });
+    } else {
+      sendResponse({ success: true, data: { signedIn: false, message: '注册成功，请先打开邮箱确认链接，然后再登录' } });
+    }
+  } catch (error) {
+    sendResponse({ success: false, error: error instanceof Error ? error.message : '注册失败' });
+  }
+}
+
+async function handleSupabaseResendConfirmation(email: string, sendResponse: (response: any) => void) {
+  try {
+    const { config } = await getSupabaseAuth();
+    if (!config) {
+      sendResponse({ success: false, error: '请先保存 Supabase 配置' });
+      return;
+    }
+
+    if (!email.trim()) {
+      sendResponse({ success: false, error: '请输入邮箱' });
+      return;
+    }
+
+    const redirectTo = chrome.runtime.getURL('popup.html');
+    await SupabaseService.resendConfirmation(config, email.trim(), redirectTo);
+    sendResponse({ success: true, data: { message: '确认邮件已重新发送，请检查邮箱' } });
+  } catch (error) {
+    sendResponse({ success: false, error: error instanceof Error ? error.message : '发送确认邮件失败' });
+  }
+}
+
+async function handleSupabaseSignIn(email: string, password: string, sendResponse: (response: any) => void) {
+  try {
+    const { config } = await getSupabaseAuth();
+    if (!config) {
+      sendResponse({ success: false, error: '请先保存 Supabase 配置' });
+      return;
+    }
+
+    const session = await SupabaseService.signIn(config, email.trim(), password);
+    await chrome.storage.local.set({ supabaseSession: session });
+    sendResponse({ success: true, data: { signedIn: true, email: session.user.email } });
+  } catch (error) {
+    sendResponse({ success: false, error: error instanceof Error ? error.message : '登录失败' });
+  }
+}
+
+async function handleSupabaseCompleteAuth(accessToken: string, refreshToken: string, sendResponse: (response: any) => void) {
+  try {
+    const { config } = await getSupabaseAuth();
+    if (!config) {
+      sendResponse({ success: false, error: '请先保存 Supabase 配置' });
+      return;
+    }
+
+    if (!accessToken) {
+      sendResponse({ success: false, error: '缺少 Supabase access token' });
+      return;
+    }
+
+    const user = await SupabaseService.getUser(config, accessToken);
+    const session: SupabaseSession = {
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      user
+    };
+
+    await chrome.storage.local.set({ supabaseSession: session });
+    const verifiedSession = await getVerifiedSession(config, session);
+    await SupabaseService.upsertUserData(config, verifiedSession, await getCloudPayload(verifiedSession));
+    sendResponse({ success: true, data: { signedIn: true, email: user.email } });
+  } catch (error) {
+    sendResponse({ success: false, error: error instanceof Error ? error.message : '确认登录失败' });
+  }
+}
+
+async function handleSupabaseSignOut(sendResponse: (response: any) => void) {
+  try {
+    await chrome.storage.local.remove(['supabaseSession']);
+    sendResponse({ success: true });
+  } catch (error) {
+    sendResponse({ success: false, error: '退出失败' });
+  }
+}
+
+async function handleSupabaseUploadLocal(sendResponse: (response: any) => void) {
+  try {
+    const { config, session } = await getSupabaseAuth();
+    if (!config || !session) {
+      sendResponse({ success: false, error: '请先登录 Supabase' });
+      return;
+    }
+
+    const verifiedSession = await getVerifiedSession(config, session);
+    const data = await SupabaseService.upsertUserData(config, verifiedSession, await getCloudPayload(verifiedSession));
+    sendResponse({ success: true, data });
+  } catch (error) {
+    sendResponse({ success: false, error: error instanceof Error ? error.message : '上传失败' });
+  }
+}
+
+async function handleSupabaseDownloadCloud(sendResponse: (response: any) => void) {
+  try {
+    const { config, session } = await getSupabaseAuth();
+    if (!config || !session) {
+      sendResponse({ success: false, error: '请先登录 Supabase' });
+      return;
+    }
+
+    const verifiedSession = await getVerifiedSession(config, session);
+    const data = await SupabaseService.getUserData(config, verifiedSession);
+    if (!data) {
+      sendResponse({ success: false, error: '云端暂无数据' });
+      return;
+    }
+
+    await chrome.storage.local.set({
+      watchlist: data.watchlist || DEFAULT_WATCHLIST,
+      coinGeckoApiKey: data.encrypted_api_token || ''
+    });
+
+    if (data.encrypted_api_token) {
+      const decryptedKey = await decrypt(data.encrypted_api_token);
+      CoinGeckoService.setApiKey(decryptedKey);
+    } else {
+      CoinGeckoService.setApiKey('');
+    }
+
+    sendResponse({ success: true, data });
+  } catch (error) {
+    sendResponse({ success: false, error: error instanceof Error ? error.message : '下载失败' });
   }
 }
