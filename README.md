@@ -32,15 +32,18 @@
 - ✅ **价格提醒** - 支持设置高于/低于阈值提醒
 - ✅ **多法币显示** - 支持 USD、CNY、HKD、EUR 切换和约等于估值
 - ✅ **云同步** - 支持 Supabase 邮箱注册/登录，同步关注、持仓、提醒和加密 Token
+- ✅ **加密存储** - CoinGecko Token 与 Supabase Anon Key 使用本地 AES-GCM 加密保存
+- ✅ **登录态优化** - Supabase 登录后隐藏注册/登录表单，支持确认邮件回跳完成登录
 - ✅ **智能缓存** - 多层缓存机制，优化API请求频率
 - ✅ **频率限制保护** - 智能请求队列，防止API限制
 
-## � 技术栈
+## 🧱 技术栈
 
 - **Frontend**: React 18 + TypeScript + Tailwind CSS
 - **Charts**: Lightweight Charts 4.2.0
 - **Build**: Webpack 5 + Chrome Extension Manifest V3
 - **API**: CoinGecko API (免费版)
+- **Cloud Sync**: Supabase Auth + PostgREST + RLS
 
 ## 🔧 安装步骤
 
@@ -57,6 +60,64 @@ npm run build
 4. 点击"加载已解压的扩展程序"
 5. 选择项目的 `dist` 文件夹
 6. 扩展安装完成！
+
+## ☁️ Supabase 云同步配置
+
+云同步是可选功能。本地不配置 Supabase 时，扩展仍然可以正常使用。
+
+### 1. 创建数据表
+
+在 Supabase 项目的 SQL Editor 中执行：
+
+```sql
+-- 见 docs/supabase-schema.sql
+```
+
+项目已提供完整脚本：[docs/supabase-schema.sql](docs/supabase-schema.sql)。
+
+脚本会创建 `coin_user_data` 表，并开启 RLS，只允许用户读写自己的数据。
+
+### 2. 配置 Auth
+
+Supabase 支持邮箱注册/登录。开发测试时有两种方式：
+
+- 保留邮箱确认：注册后点击确认邮件，再登录。
+- 关闭邮箱确认：`Authentication` → `Providers` → `Email` → 关闭 `Confirm email`。
+
+如果要让确认邮件跳回插件页面，请在：
+
+`Authentication` → `URL Configuration` → `Redirect URLs`
+
+添加你的扩展地址：
+
+```text
+chrome-extension://你的扩展ID/popup.html
+```
+
+扩展 ID 可在 `chrome://extensions/` 中查看。
+
+### 3. 在扩展中登录
+
+打开扩展设置页，填写：
+
+- Supabase Project URL
+- Supabase Anon Public Key
+
+然后使用邮箱注册/登录。登录后：
+
+- 注册/登录表单会自动隐藏
+- 可手动上传本地数据
+- 可从云端下载数据
+- 新增关注、删除关注、修改持仓/提醒、保存 Token 时会自动尝试同步
+
+### 4. 同步的数据
+
+- 关注列表
+- 持仓数量
+- 价格提醒
+- CoinGecko API Token（加密后上传）
+
+Supabase Anon Key 本身是前端公开 key，但扩展本地仍会加密保存，减少被直接读取的风险。
 
 ## 🐛 故障排除
 
@@ -101,7 +162,7 @@ npm run build
    所有console.log消息都已添加，方便调试
    ```
 
-## � 技术优化
+## ⚙️ 技术优化
 
 ### API频率限制解决方案
 
@@ -113,15 +174,16 @@ npm run build
 #### 2. 智能缓存系统
 - **价格数据**: 3分钟缓存，平衡实时性和API使用
 - **搜索结果**: 15分钟缓存，减少重复搜索的API调用
-- **历史数据**: 10分钟缓存，K线图数据更新频率适中
+- **历史数据**: 10分钟缓存，趋势图数据更新频率适中
 - **趋势数据**: 30分钟缓存，趋势数据变化相对较慢
 
 #### 3. 错误处理和重试
 - 检测429状态码，自动延迟重试
+- 检测 CoinGecko 401/403，自动尝试不带 API Key 的公共接口重试
 - 用户友好的错误提示
 - 优雅降级，确保基本功能可用
 
-## � 开发命令
+## 🛠️ 开发命令
 
 ```bash
 # 安装依赖
@@ -146,6 +208,8 @@ coin/
 │   ├── popup/              # 弹窗界面
 │   ├── services/           # API服务
 │   └── types/              # TypeScript类型定义
+├── docs/
+│   └── supabase-schema.sql # Supabase 表结构与 RLS 脚本
 ├── public/
 │   ├── manifest.json       # 扩展清单文件
 │   └── icons/             # 图标文件
@@ -153,19 +217,26 @@ coin/
 └── test-extension.html    # API测试页面
 ```
 
-## � 已修复的问题
+## ✅ 已修复的问题
 
 - ✅ **API频率限制 (429错误)**：增加了请求队列和缓存机制
 - ✅ **智能缓存**：不同类型数据使用不同缓存时长  
 - ✅ **友好错误提示**：用户友好的中文错误信息
 - ✅ **自动重试**：遇到限制时自动延迟重试
 - ✅ **Service Worker 通信**：增加PING机制确保后台脚本就绪
+- ✅ **Supabase RLS 权限**：补充 authenticated 授权和 user_id 默认 auth.uid()
+- ✅ **邮箱确认回跳**：支持确认邮件跳回扩展并完成登录态保存
+- ✅ **无效 CoinGecko Key**：401/403 时自动退回公共接口重试
 
 ## 💡 使用提示
 
-- 点击币种名称可查看K线图详情
-- 支持7天、30天、90天、1年的K线图
+- 点击币种名称可查看价格趋势详情
+- 支持7天、30天、90天、1年的趋势图
+- 观察列表齿轮按钮可配置持仓数量和价格提醒
+- 持仓页可以独立选择“约等于”估值币种
+- Supabase 登录后可在设置页上传本地数据或下载云端数据
 - 数据会自动缓存，减少API调用
+- 如 CoinGecko 返回 401，请清空或重新填写 API Key
 - 如遇到"API请求过于频繁"提示，请等待几分钟后再试
 
 ---
