@@ -286,7 +286,10 @@ async function handleGetCoinHistory(coinId: string, days: number = 30, interval:
     sendResponse({ success: true, data });
   } catch (error) {
     console.error('Error getting coin history:', error);
-    sendResponse({ success: false, error: 'Failed to fetch history' });
+    const errorMessage = error instanceof Error && error.message.includes('401')
+      ? 'CoinGecko API Key 无效，请在设置中清空或重新填写'
+      : 'Failed to fetch history';
+    sendResponse({ success: false, error: errorMessage });
   }
 }
 

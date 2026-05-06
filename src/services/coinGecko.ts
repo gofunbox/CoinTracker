@@ -89,6 +89,11 @@ export class CoinGeckoService {
     console.log('CoinGecko API key updated.');
   }
 
+  static clearApiKey() {
+    this.apiKey = '';
+    console.warn('CoinGecko API key cleared for current session.');
+  }
+
   // 缓存辅助函数
   private static getCacheKey(url: string): string {
     return btoa(url.replace(/[^a-zA-Z0-9]/g, '_')); // 安全的base64编码
@@ -146,7 +151,15 @@ export class CoinGeckoService {
           headers['x-cg-demo-api-key'] = this.apiKey;
         }
 
-        const response = await fetch(url, { headers });
+        let response = await fetch(url, { headers });
+
+        if ((response.status === 401 || response.status === 403) && this.apiKey) {
+          console.warn('CoinGecko API key rejected, retrying without API key.');
+          response = await fetch(url);
+          if (response.ok) {
+            this.clearApiKey();
+          }
+        }
         
         if (!response.ok) {
           if (response.status === 429) {
