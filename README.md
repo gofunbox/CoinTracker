@@ -1,8 +1,8 @@
 # CoinTracker - 加密货币Chrome扩展
 
-一个现代化的加密货币价格追踪Chrome扩展，支持实时价格显示、K线图分析和智能缓存功能。
+一个现代化的加密货币价格追踪 Chrome 扩展，支持实时价格显示、趋势图分析、价格提醒、云同步和智能缓存功能。
 
-## 🖼️ UI 预览 (v2.0 极客暗黑屏)
+## 🖼️ UI 预览 (v2.1 云同步与多币种)
 
 <table>
   <tr>
@@ -14,12 +14,12 @@
     <td align="center">
       <img src="assets/screenshots/search.png" alt="搜索与添加" width="260"/>
       <br/>
-      <b>高级搜索与添加</b>
+      <b>热门搜索与添加</b>
     </td>
     <td align="center">
-      <img src="assets/screenshots/detail.png" alt="行情折线图" width="260"/>
+      <img src="assets/screenshots/detail.png" alt="价格趋势图" width="260"/>
       <br/>
-      <b>币种趋势详情页</b>
+      <b>价格趋势详情页</b>
     </td>
   </tr>
 </table>
@@ -27,9 +27,11 @@
 ## 🚀 功能特性
 
 - ✅ **实时价格显示** - 支持多种加密货币的实时价格监控
-- ✅ **K线图分析** - 集成lightweight-charts，提供专业的价格走势图
-- ✅ **搜索添加** - 快速搜索并添加关注的币种
-- ✅ **价格提醒** - 设置价格阈值提醒（规划中）
+- ✅ **趋势图分析** - 集成 lightweight-charts，提供真实价格趋势图
+- ✅ **搜索添加** - 支持搜索和热门币种一键关注
+- ✅ **价格提醒** - 支持设置高于/低于阈值提醒
+- ✅ **多法币显示** - 支持 USD、CNY、HKD、EUR 切换和约等于估值
+- ✅ **云同步** - 支持 Supabase 邮箱注册/登录，同步关注、持仓、提醒和加密 Token
 - ✅ **智能缓存** - 多层缓存机制，优化API请求频率
 - ✅ **频率限制保护** - 智能请求队列，防止API限制
 
