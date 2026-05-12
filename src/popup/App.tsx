@@ -23,6 +23,7 @@ const App: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [refreshCooldown, setRefreshCooldown] = useState(0);
   const [hideBalances, setHideBalances] = useState(() => localStorage.getItem('hideBalances') === 'true');
+  const [showWatchlistTip, setShowWatchlistTip] = useState(() => localStorage.getItem('hideWatchlistTip') !== 'true');
   const [timeframe, setTimeframe] = useState<'24h' | '30d' | '1y'>('24h');
   const [vsCurrency, setVsCurrency] = useState<SupportedCurrency>(() => (localStorage.getItem('vsCurrency') as SupportedCurrency) || 'usd');
   const [approxCurrency, setApproxCurrency] = useState<SupportedCurrency>(() => (localStorage.getItem('approxCurrency') as SupportedCurrency) || 'cny');
@@ -677,9 +678,21 @@ const App: React.FC = () => {
               )}
 
               {!isLoading && !error && watchlistCoins.length > 0 && (
-                <div className="px-4 py-2 mb-2 mx-3 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center">
+                showWatchlistTip && <div className="px-4 py-2 mb-2 mx-3 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center">
                   <span className="text-lg mr-2">💡</span>
                   <p className="text-xs font-medium text-blue-300">点击币种卡片查看详情走势图，齿轮可配置持仓和价格提醒</p>
+                  <button
+                    onClick={() => {
+                      localStorage.setItem('hideWatchlistTip', 'true');
+                      setShowWatchlistTip(false);
+                    }}
+                    className="ml-2 shrink-0 text-blue-300/70 hover:text-blue-100 rounded-md p-1 hover:bg-blue-400/10 transition-colors"
+                    title="关闭提示"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
                 </div>
               )}
 
