@@ -254,6 +254,14 @@ const App: React.FC = () => {
 
   const formatPrice = (price: number): string => formatPriceFor(price, vsCurrency);
 
+  const formatExchangeRate = (rate: number): string => {
+    const absRate = Math.abs(rate);
+    return new Intl.NumberFormat('en-US', {
+      minimumFractionDigits: absRate >= 1 ? 2 : 4,
+      maximumFractionDigits: absRate >= 1 ? 4 : 8
+    }).format(rate);
+  };
+
   // 格式化百分比
   const formatPercentage = (percentage: number): string => {
     const sign = percentage >= 0 ? '+' : '';
@@ -380,6 +388,25 @@ const App: React.FC = () => {
   const portfolioChangeIsPositive = portfolioChangeUsd >= 0;
   const approxTotalHoldings = (approxCurrency === vsCurrency ? holdings : approxCoins.filter(c => c.amount && c.amount > 0))
     .reduce((sum, coin) => sum + ((coin.current_price || 0) * (coin.amount || 0)), 0);
+  const approxCoinById = new Map(approxCoins.map(coin => [coin.id, coin]));
+  const exchangeRates = watchlistCoins
+    .map(coin => {
+      const approxCoin = approxCoinById.get(coin.id);
+      if (!approxCoin || !coin.current_price || !approxCoin.current_price) return null;
+      const rate = approxCoin.current_price / coin.current_price;
+      return Number.isFinite(rate) && rate > 0 ? rate : null;
+    })
+    .filter((rate): rate is number => rate !== null)
+    .sort((a, b) => a - b);
+  const currencyExchangeRate = vsCurrency === approxCurrency
+    ? 1
+    : exchangeRates.length === 0
+      ? null
+      : exchangeRates.length % 2 === 0
+        ? (exchangeRates[exchangeRates.length / 2 - 1] + exchangeRates[exchangeRates.length / 2]) / 2
+        : exchangeRates[Math.floor(exchangeRates.length / 2)];
+  const baseCurrencyCode = currencyLabels[vsCurrency].code;
+  const quoteCurrencyCode = currencyLabels[approxCurrency].code;
 
   const renderMasked = (val: string, mask: string = '******') => hideBalances ? mask : val;
   const sortedHoldings = [...holdings].sort((a, b) => ((b.current_price || 0) * (b.amount || 0)) - ((a.current_price || 0) * (a.amount || 0)));
@@ -547,6 +574,25 @@ const App: React.FC = () => {
                   {portfolioChangeIsPositive ? '+' : ''}{renderMasked(formatPrice(Math.abs(portfolioChangeUsd)))} ({portfolioChangeIsPositive ? '+' : ''}{renderMasked(portfolioChangePct.toFixed(2), '***')}%)
                 </div>
               )}
+
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <div className="rounded-xl border border-white/10 bg-slate-950/30 px-3 py-2.5">
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                    {baseCurrencyCode} / {quoteCurrencyCode}
+                  </div>
+                  <div className="mt-1 text-sm font-bold text-white tabular-nums">
+                    {currencyExchangeRate ? `1 = ${formatExchangeRate(currencyExchangeRate)}` : '--'}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-slate-950/30 px-3 py-2.5">
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                    {quoteCurrencyCode} / {baseCurrencyCode}
+                  </div>
+                  <div className="mt-1 text-sm font-bold text-white tabular-nums">
+                    {currencyExchangeRate ? `1 = ${formatExchangeRate(1 / currencyExchangeRate)}` : '--'}
+                  </div>
+                </div>
+              </div>
             </div>
             <div className="flex-1 overflow-y-auto scrollbar-thin pb-4">
               {holdings.length === 0 ? (
