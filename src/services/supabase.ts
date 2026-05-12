@@ -8,6 +8,8 @@ export interface SupabaseConfig {
 export interface SupabaseSession {
   access_token: string;
   refresh_token?: string;
+  expires_in?: number;
+  expires_at?: number;
   user: {
     id: string;
     email?: string;
@@ -66,6 +68,17 @@ export class SupabaseService {
       method: 'POST',
       headers: this.headers(config),
       body: JSON.stringify({ email, password })
+    });
+
+    return this.parseResponse(response) as Promise<SupabaseSession>;
+  }
+
+  static async refreshSession(config: SupabaseConfig, refreshToken: string): Promise<SupabaseSession> {
+    const url = `${this.normalizeUrl(config.url)}/auth/v1/token?grant_type=refresh_token`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: this.headers(config),
+      body: JSON.stringify({ refresh_token: refreshToken })
     });
 
     return this.parseResponse(response) as Promise<SupabaseSession>;

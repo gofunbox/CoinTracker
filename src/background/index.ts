@@ -454,11 +454,48 @@ async function getCloudPayload(session: SupabaseSession) {
   };
 }
 
+function isSupabaseAuthTokenError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const message = error.message.toLowerCase();
+  return (
+    message.includes('invalid jwt') ||
+    message.includes('jwt expired') ||
+    message.includes('token is expired') ||
+    message.includes('invalid refresh token') ||
+    message.includes('refresh token not found')
+  );
+}
+
 async function getVerifiedSession(config: SupabaseConfig, session: SupabaseSession): Promise<SupabaseSession> {
-  const user = await SupabaseService.getUser(config, session.access_token);
-  const verifiedSession = { ...session, user };
-  await chrome.storage.local.set({ supabaseSession: verifiedSession });
-  return verifiedSession;
+  try {
+    const user = await SupabaseService.getUser(config, session.access_token);
+    const verifiedSession = { ...session, user };
+    await chrome.storage.local.set({ supabaseSession: verifiedSession });
+    return verifiedSession;
+  } catch (error) {
+    if (!isSupabaseAuthTokenError(error)) {
+      throw error;
+    }
+
+    if (!session.refresh_token) {
+      await chrome.storage.local.remove(['supabaseSession']);
+      throw new Error('Supabase 登录已过期，请重新登录后再同步');
+    }
+
+    try {
+      const refreshedSession = await SupabaseService.refreshSession(config, session.refresh_token);
+      const user = refreshedSession.user || await SupabaseService.getUser(config, refreshedSession.access_token);
+      const verifiedSession = { ...refreshedSession, user };
+      await chrome.storage.local.set({ supabaseSession: verifiedSession });
+      return verifiedSession;
+    } catch (refreshError) {
+      if (isSupabaseAuthTokenError(refreshError)) {
+        await chrome.storage.local.remove(['supabaseSession']);
+        throw new Error('Supabase 登录已过期，请重新登录后再同步');
+      }
+      throw refreshError;
+    }
+  }
 }
 
 async function syncLocalToCloudSilently() {
@@ -475,13 +512,14 @@ async function syncLocalToCloudSilently() {
 async function handleGetSupabaseStatus(sendResponse: (response: any) => void) {
   try {
     const { config, session } = await getSupabaseAuth();
+    const verifiedSession = config && session ? await getVerifiedSession(config, session).catch(() => undefined) : undefined;
     sendResponse({
       success: true,
       data: {
         configured: Boolean(config?.url && config?.anonKey),
-        signedIn: Boolean(session?.access_token && session?.user?.id),
-        email: session?.user?.email,
-        userId: session?.user?.id,
+        signedIn: Boolean(verifiedSession?.access_token && verifiedSession?.user?.id),
+        email: verifiedSession?.user?.email,
+        userId: verifiedSession?.user?.id,
         supabaseUrl: config?.url || '',
         supabaseAnonKey: config?.anonKey || ''
       }
@@ -493,6 +531,7 @@ async function handleGetSupabaseStatus(sendResponse: (response: any) => void) {
 
 async function handleSaveSupabaseConfig(supabaseUrl: string, supabaseAnonKey: string, sendResponse: (response: any) => void) {
   try {
+    const { config: currentConfig } = await getSupabaseAuth();
     const url = supabaseUrl.trim();
     const anonKey = supabaseAnonKey.trim();
     const config: SupabaseConfig = {
@@ -506,6 +545,7 @@ async function handleSaveSupabaseConfig(supabaseUrl: string, supabaseAnonKey: st
       return;
     }
 
+    const configChanged = currentConfig?.url !== config.url || currentConfig?.anonKey !== config.anonKey;
     const encryptedAnonKey = await encrypt(config.anonKey);
     await chrome.storage.local.set({
       supabaseConfig: {
@@ -513,7 +553,13 @@ async function handleSaveSupabaseConfig(supabaseUrl: string, supabaseAnonKey: st
         encryptedAnonKey
       }
     });
-    sendResponse({ success: true });
+
+    if (configChanged) {
+      await chrome.storage.local.remove(['supabaseSession']);
+      sendResponse({ success: true, data: { message: 'Supabase 配置已保存，请重新登录后再同步' } });
+    } else {
+      sendResponse({ success: true });
+    }
   } catch (error) {
     sendResponse({ success: false, error: 'Failed to save Supabase config' });
   }
