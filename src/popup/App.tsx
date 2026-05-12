@@ -24,6 +24,7 @@ const App: React.FC = () => {
   const [refreshCooldown, setRefreshCooldown] = useState(0);
   const [hideBalances, setHideBalances] = useState(() => localStorage.getItem('hideBalances') === 'true');
   const [showWatchlistTip, setShowWatchlistTip] = useState(() => localStorage.getItem('hideWatchlistTip') !== 'true');
+  const [exchangeRateCollapsed, setExchangeRateCollapsed] = useState(() => localStorage.getItem('exchangeRateCollapsed') === 'true');
   const [timeframe, setTimeframe] = useState<'24h' | '30d' | '1y'>('24h');
   const [vsCurrency, setVsCurrency] = useState<SupportedCurrency>(() => (localStorage.getItem('vsCurrency') as SupportedCurrency) || 'usd');
   const [approxCurrency, setApproxCurrency] = useState<SupportedCurrency>(() => (localStorage.getItem('approxCurrency') as SupportedCurrency) || 'cny');
@@ -521,8 +522,8 @@ const App: React.FC = () => {
       <div className="flex-1 overflow-hidden relative">
         {activeTab === 'holdings' ? (
           <div className="h-full flex flex-col relative z-10 w-full overflow-hidden">
-            <div className="p-5 bg-gradient-to-r from-blue-900/40 to-slate-800/40 border-b border-white/5">
-              <div className="flex justify-between items-center mb-2">
+            <div className="px-4 py-3 bg-gradient-to-r from-blue-900/40 to-slate-800/40 border-b border-white/5">
+              <div className="flex justify-between items-center mb-1.5">
                 <h2 className="text-slate-400 text-sm font-medium flex items-center">
                   总资产估值
                   <button 
@@ -545,10 +546,10 @@ const App: React.FC = () => {
                 </div>
               </div>
 
-              <div className="text-3xl font-bold text-white tracking-tight shrink-0 flex items-baseline">
+              <div className="text-2xl font-bold text-white tracking-tight shrink-0 flex items-baseline">
                 {renderMasked(formatPrice(totalHoldingsUsd))}
               </div>
-              <div className="mt-1 flex items-center gap-2 text-sm text-slate-400">
+              <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-400">
                 <span>
                   ≈ {renderMasked(formatPriceFor(approxTotalHoldings, approxCurrency))}
                 </span>
@@ -566,7 +567,7 @@ const App: React.FC = () => {
               </div>
 
               {holdings.length > 0 && (
-                <div className={`mt-2 text-sm font-medium flex items-center ${portfolioChangeIsPositive ? 'text-emerald-400' : 'text-rose-400'}`}>
+                <div className={`mt-1 text-xs font-medium flex items-center ${portfolioChangeIsPositive ? 'text-emerald-400' : 'text-rose-400'}`}>
                   {portfolioChangeIsPositive ? (
                     <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 10l7-7m0 0l7 7m-7-7v18" /></svg>
                   ) : (
@@ -576,23 +577,52 @@ const App: React.FC = () => {
                 </div>
               )}
 
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                <div className="rounded-xl border border-white/10 bg-slate-950/30 px-3 py-2.5">
-                  <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-                    {baseCurrencyCode} / {quoteCurrencyCode}
+              <div className="mt-2 rounded-lg border border-white/10 bg-slate-950/25">
+                <button
+                  onClick={() => {
+                    const nextCollapsed = !exchangeRateCollapsed;
+                    localStorage.setItem('exchangeRateCollapsed', nextCollapsed.toString());
+                    setExchangeRateCollapsed(nextCollapsed);
+                  }}
+                  className="w-full px-3 py-1.5 flex items-center justify-between text-left hover:bg-white/5 transition-colors rounded-lg"
+                  title={exchangeRateCollapsed ? '展开汇率' : '折叠汇率'}
+                >
+                  <span className="text-[11px] font-bold text-slate-300">汇率</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-semibold text-slate-500">
+                      {baseCurrencyCode} / {quoteCurrencyCode}
+                    </span>
+                    <svg
+                      className={`w-3.5 h-3.5 text-slate-400 transition-transform ${exchangeRateCollapsed ? '' : 'rotate-180'}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
                   </div>
-                  <div className="mt-1 text-sm font-bold text-white tabular-nums">
-                    {currencyExchangeRate ? `1 = ${formatExchangeRate(currencyExchangeRate)}` : '--'}
+                </button>
+
+                {!exchangeRateCollapsed && (
+                  <div className="grid grid-cols-2 gap-2 px-2.5 pb-2.5">
+                    <div className="rounded-md border border-white/10 bg-slate-900/60 px-2.5 py-2">
+                      <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                        {baseCurrencyCode} / {quoteCurrencyCode}
+                      </div>
+                      <div className="mt-0.5 text-xs font-bold text-white tabular-nums">
+                        {currencyExchangeRate ? `1 = ${formatExchangeRate(currencyExchangeRate)}` : '--'}
+                      </div>
+                    </div>
+                    <div className="rounded-md border border-white/10 bg-slate-900/60 px-2.5 py-2">
+                      <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                        {quoteCurrencyCode} / {baseCurrencyCode}
+                      </div>
+                      <div className="mt-0.5 text-xs font-bold text-white tabular-nums">
+                        {currencyExchangeRate ? `1 = ${formatExchangeRate(1 / currencyExchangeRate)}` : '--'}
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <div className="rounded-xl border border-white/10 bg-slate-950/30 px-3 py-2.5">
-                  <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-                    {quoteCurrencyCode} / {baseCurrencyCode}
-                  </div>
-                  <div className="mt-1 text-sm font-bold text-white tabular-nums">
-                    {currencyExchangeRate ? `1 = ${formatExchangeRate(1 / currencyExchangeRate)}` : '--'}
-                  </div>
-                </div>
+                )}
               </div>
             </div>
             <div className="flex-1 overflow-y-auto scrollbar-thin pb-4">
