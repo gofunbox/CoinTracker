@@ -20,6 +20,15 @@ export interface Coin {
 export type SupportedCurrency = 'usd' | 'cny' | 'hkd' | 'eur';
 export type WatchlistSort = 'rank' | 'priceChange' | 'holdingValue' | 'name';
 
+export interface AssetSnapshot {
+  date: string;
+  totalUsd: number;
+  totalRmb: number;
+  usdToRmbRate?: number;
+  recordedAt: string;
+  holdingCount: number;
+}
+
 export interface SupabaseCloudStatus {
   configured: boolean;
   signedIn: boolean;

@@ -4,9 +4,13 @@
 create table if not exists public.coin_user_data (
   user_id uuid primary key references auth.users(id) on delete cascade,
   watchlist jsonb not null default '[]'::jsonb,
+  asset_snapshots jsonb not null default '[]'::jsonb,
   encrypted_api_token text,
   updated_at timestamptz not null default now()
 );
+
+alter table public.coin_user_data
+  add column if not exists asset_snapshots jsonb not null default '[]'::jsonb;
 
 alter table public.coin_user_data enable row level security;
 

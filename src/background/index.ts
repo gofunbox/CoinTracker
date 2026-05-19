@@ -1,9 +1,12 @@
 import { CoinGeckoService } from '../services/coinGecko';
 import { SupabaseConfig, SupabaseService, SupabaseSession } from '../services/supabase';
-import { SupportedCurrency, WatchlistItem } from '../types';
+import { AssetSnapshot, SupportedCurrency, WatchlistItem } from '../types';
 import { encrypt, decrypt } from '../utils/crypto';
 
 console.log('CoinTracker background script started');
+
+const DAILY_ASSET_SNAPSHOT_ALARM = 'assetSnapshotDaily';
+const ASSET_SNAPSHOTS_STORAGE_KEY = 'assetSnapshots';
 
 // 默认观察列表
 const DEFAULT_WATCHLIST: WatchlistItem[] = [
@@ -18,14 +21,21 @@ interface StoredSupabaseConfig {
   encryptedAnonKey?: string;
 }
 
-// Initialize API key
-chrome.storage.local.get(['coinGeckoApiKey']).then(async result => {
+async function initializeBackground() {
+  const result = await chrome.storage.local.get(['coinGeckoApiKey']);
   if (result.coinGeckoApiKey) {
     const decryptedKey = await decrypt(result.coinGeckoApiKey);
     if (decryptedKey) {
       CoinGeckoService.setApiKey(decryptedKey);
     }
   }
+
+  await scheduleDailyAssetSnapshotAlarm();
+  await recordAssetSnapshotIfDue('background-start');
+}
+
+initializeBackground().catch(error => {
+  console.warn('Background initialization skipped:', error);
 });
 
 // 初始化默认观察列表
@@ -47,6 +57,21 @@ chrome.runtime.onInstalled.addListener(async () => {
   
   // 设置定期更新 - 改为10分钟一次，避免频率限制
   chrome.alarms.create('updatePrices', { periodInMinutes: 10 });
+  await scheduleDailyAssetSnapshotAlarm();
+  try {
+    await recordAssetSnapshotIfDue('installed');
+  } catch (error) {
+    console.warn('Installed asset snapshot check skipped:', error);
+  }
+});
+
+chrome.runtime.onStartup.addListener(async () => {
+  try {
+    await scheduleDailyAssetSnapshotAlarm();
+    await recordAssetSnapshotIfDue('startup');
+  } catch (error) {
+    console.warn('Startup asset snapshot check skipped:', error);
+  }
 });
 
 // 处理定期价格更新
@@ -54,6 +79,15 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === 'updatePrices') {
     console.log('Updating prices...');
     await updatePrices();
+  }
+
+  if (alarm.name === DAILY_ASSET_SNAPSHOT_ALARM) {
+    console.log('Recording daily asset snapshot...');
+    try {
+      await recordAssetSnapshotIfDue('alarm');
+    } catch (error) {
+      console.warn('Daily asset snapshot alarm skipped:', error);
+    }
   }
 });
 
@@ -338,6 +372,111 @@ async function updatePrices() {
   }
 }
 
+function getLocalDateKey(date: Date = new Date()): string {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function getNextLocalTenAM(): number {
+  const now = new Date();
+  const next = new Date(now);
+  next.setHours(10, 0, 0, 0);
+
+  if (next.getTime() <= now.getTime()) {
+    next.setDate(next.getDate() + 1);
+  }
+
+  return next.getTime();
+}
+
+function isAfterLocalTenAM(date: Date = new Date()): boolean {
+  const tenAM = new Date(date);
+  tenAM.setHours(10, 0, 0, 0);
+  return date.getTime() >= tenAM.getTime();
+}
+
+async function scheduleDailyAssetSnapshotAlarm() {
+  chrome.alarms.create(DAILY_ASSET_SNAPSHOT_ALARM, {
+    when: getNextLocalTenAM(),
+    periodInMinutes: 24 * 60
+  });
+}
+
+function normalizeAssetSnapshots(value: unknown): AssetSnapshot[] {
+  return Array.isArray(value) ? value.filter((item): item is AssetSnapshot => {
+    const snapshot = item as Partial<AssetSnapshot>;
+    return (
+      typeof snapshot.date === 'string' &&
+      typeof snapshot.totalUsd === 'number' &&
+      typeof snapshot.totalRmb === 'number' &&
+      typeof snapshot.recordedAt === 'string'
+    );
+  }) : [];
+}
+
+async function recordAssetSnapshotIfDue(source: 'alarm' | 'startup' | 'installed' | 'background-start') {
+  if (!isAfterLocalTenAM()) return;
+
+  const today = getLocalDateKey();
+  const stored = await chrome.storage.local.get([ASSET_SNAPSHOTS_STORAGE_KEY]);
+  const snapshots = normalizeAssetSnapshots(stored[ASSET_SNAPSHOTS_STORAGE_KEY]);
+  if (snapshots.some(snapshot => snapshot.date === today)) return;
+
+  await recordAssetSnapshot(today, source);
+}
+
+async function recordAssetSnapshot(date: string, source: string) {
+  const { watchlist } = await chrome.storage.local.get(['watchlist']);
+  const watchlistItems: WatchlistItem[] = watchlist || DEFAULT_WATCHLIST;
+  const holdingItems = watchlistItems.filter(item => (item.amount || 0) > 0);
+  const coinIds = holdingItems.map(item => item.coinId);
+
+  let totalUsd = 0;
+  let totalRmb = 0;
+
+  if (coinIds.length > 0) {
+    const [usdCoins, cnyCoins] = await Promise.all([
+      CoinGeckoService.getCoins(coinIds, true, 'usd'),
+      CoinGeckoService.getCoins(coinIds, true, 'cny')
+    ]);
+
+    if (usdCoins.length === 0 || cnyCoins.length === 0) {
+      throw new Error('Unable to fetch prices for daily asset snapshot');
+    }
+
+    const usdById = new Map(usdCoins.map(coin => [coin.id, coin]));
+    const cnyById = new Map(cnyCoins.map(coin => [coin.id, coin]));
+
+    holdingItems.forEach(item => {
+      const amount = item.amount || 0;
+      totalUsd += (usdById.get(item.coinId)?.current_price || 0) * amount;
+      totalRmb += (cnyById.get(item.coinId)?.current_price || 0) * amount;
+    });
+  }
+
+  const stored = await chrome.storage.local.get([ASSET_SNAPSHOTS_STORAGE_KEY]);
+  const snapshots = normalizeAssetSnapshots(stored[ASSET_SNAPSHOTS_STORAGE_KEY]);
+  if (snapshots.some(snapshot => snapshot.date === date)) return;
+
+  const snapshot: AssetSnapshot = {
+    date,
+    totalUsd: Number(totalUsd.toFixed(2)),
+    totalRmb: Number(totalRmb.toFixed(2)),
+    usdToRmbRate: totalUsd > 0 ? Number((totalRmb / totalUsd).toFixed(6)) : undefined,
+    recordedAt: new Date().toISOString(),
+    holdingCount: holdingItems.length
+  };
+
+  await chrome.storage.local.set({
+    [ASSET_SNAPSHOTS_STORAGE_KEY]: [...snapshots, snapshot]
+  });
+  console.log(`Daily asset snapshot saved from ${source}:`, snapshot);
+
+  await syncLocalToCloudSilently();
+}
+
 async function handleUpdateCoinAmount(coinId: string | undefined, amount: number | undefined, sendResponse: (response: any) => void) {
   try {
     if (!coinId) {
@@ -446,10 +585,11 @@ async function getSupabaseAuth(): Promise<{ config?: SupabaseConfig; session?: S
 }
 
 async function getCloudPayload(session: SupabaseSession) {
-  const { watchlist, coinGeckoApiKey } = await chrome.storage.local.get(['watchlist', 'coinGeckoApiKey']);
+  const { watchlist, coinGeckoApiKey, assetSnapshots } = await chrome.storage.local.get(['watchlist', 'coinGeckoApiKey', ASSET_SNAPSHOTS_STORAGE_KEY]);
   return {
     user_id: session.user.id,
     watchlist: watchlist || DEFAULT_WATCHLIST,
+    asset_snapshots: normalizeAssetSnapshots(assetSnapshots),
     encrypted_api_token: coinGeckoApiKey || undefined
   };
 }
@@ -696,6 +836,7 @@ async function handleSupabaseDownloadCloud(sendResponse: (response: any) => void
 
     await chrome.storage.local.set({
       watchlist: data.watchlist || DEFAULT_WATCHLIST,
+      [ASSET_SNAPSHOTS_STORAGE_KEY]: normalizeAssetSnapshots(data.asset_snapshots),
       coinGeckoApiKey: data.encrypted_api_token || ''
     });
 

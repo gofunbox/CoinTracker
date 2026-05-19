@@ -1,4 +1,4 @@
-import { WatchlistItem } from '../types';
+import { AssetSnapshot, WatchlistItem } from '../types';
 
 export interface SupabaseConfig {
   url: string;
@@ -19,6 +19,7 @@ export interface SupabaseSession {
 export interface CloudUserData {
   user_id: string;
   watchlist: WatchlistItem[];
+  asset_snapshots?: AssetSnapshot[];
   encrypted_api_token?: string;
   updated_at?: string;
 }
