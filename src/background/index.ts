@@ -129,6 +129,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       handleGetCoinDetails(message.coinId, sendResponse);
       return true;
 
+    case 'GET_ASSET_SNAPSHOTS':
+      handleGetAssetSnapshots(sendResponse);
+      return true;
+
     case 'SAVE_API_KEY':
       handleSaveApiKey(message.apiKey || '', sendResponse);
       return true;
@@ -334,6 +338,18 @@ async function handleGetCoinDetails(coinId: string, sendResponse: (response: any
   } catch (error) {
     console.error('Error getting coin details:', error);
     sendResponse({ success: false, error: 'Failed to fetch details' });
+  }
+}
+
+async function handleGetAssetSnapshots(sendResponse: (response: any) => void) {
+  try {
+    const stored = await chrome.storage.local.get([ASSET_SNAPSHOTS_STORAGE_KEY]);
+    const snapshots = normalizeAssetSnapshots(stored[ASSET_SNAPSHOTS_STORAGE_KEY])
+      .sort((a, b) => a.date.localeCompare(b.date));
+    sendResponse({ success: true, data: snapshots });
+  } catch (error) {
+    console.error('Error getting asset snapshots:', error);
+    sendResponse({ success: false, error: 'Failed to get asset snapshots' });
   }
 }
 

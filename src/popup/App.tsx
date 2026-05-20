@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Coin, SearchResult, BackgroundMessage, ApiResponse, SupportedCurrency, WatchlistSort } from '../types';
 import CoinDetail from './CoinDetail';
 import Settings from './Settings';
+import AssetTrend from './AssetTrend';
 
 const App: React.FC = () => {
   const [watchlistCoins, setWatchlistCoins] = useState<Coin[]>([]);
@@ -13,6 +14,7 @@ const App: React.FC = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [isTrendingLoading, setIsTrendingLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'watchlist' | 'search' | 'holdings'>('watchlist');
+  const [holdingsView, setHoldingsView] = useState<'positions' | 'trend'>('positions');
   const [error, setError] = useState<string | null>(null);
   const [selectedCoin, setSelectedCoin] = useState<{ id: string; name: string } | null>(null);
   const [editingAmountCoinId, setEditingAmountCoinId] = useState<string | null>(null);
@@ -522,10 +524,35 @@ const App: React.FC = () => {
       <div className="flex-1 overflow-hidden relative">
         {activeTab === 'holdings' ? (
           <div className="h-full flex flex-col relative z-10 w-full overflow-hidden">
-            <div className="px-4 py-3 bg-gradient-to-r from-blue-900/40 to-slate-800/40 border-b border-white/5">
-              <div className="flex justify-between items-center mb-1.5">
-                <h2 className="text-slate-400 text-sm font-medium flex items-center">
-                  总资产估值
+            <div className={`${holdingsView === 'trend' ? 'px-4 py-2' : 'px-4 py-3'} bg-gradient-to-r from-blue-900/40 to-slate-800/40 border-b border-white/5`}>
+              {holdingsView === 'trend' ? (
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-bold text-white">资产趋势</div>
+                    <div className="text-[11px] text-slate-500">每日快照 · USD / RMB</div>
+                  </div>
+                  <div className="flex shrink-0 rounded-md border border-white/10 bg-black/20 p-0.5">
+                    <button
+                      onClick={() => setHoldingsView('positions')}
+                      className="px-2.5 py-1 rounded text-[10px] font-bold text-slate-500 hover:text-slate-300 transition-all"
+                      title="查看持仓明细"
+                    >
+                      明细
+                    </button>
+                    <button
+                      onClick={() => setHoldingsView('trend')}
+                      className="px-2.5 py-1 rounded bg-blue-500/20 text-[10px] font-bold text-blue-300 transition-all"
+                      title="查看资产趋势"
+                    >
+                      趋势
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex justify-between items-center gap-2 mb-1.5">
+                    <h2 className="text-slate-400 text-sm font-medium flex items-center min-w-0">
+                      <span className="shrink-0">总资产估值</span>
                   <button 
                     onClick={() => setHideBalances(!hideBalances)} 
                     className="ml-2 text-slate-500 hover:text-slate-300 transition-colors focus:outline-none"
@@ -537,14 +564,30 @@ const App: React.FC = () => {
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                     )}
                   </button>
-                </h2>
+                  <div className="ml-2 flex shrink-0 rounded-md border border-white/10 bg-black/20 p-0.5">
+                    <button
+                      onClick={() => setHoldingsView('positions')}
+                      className="px-2 py-0.5 rounded bg-blue-500/20 text-[10px] font-bold text-blue-300 transition-all"
+                      title="查看持仓明细"
+                    >
+                      明细
+                    </button>
+                    <button
+                      onClick={() => setHoldingsView('trend')}
+                      className="px-2 py-0.5 rounded text-[10px] font-bold text-slate-500 hover:text-slate-300 transition-all"
+                      title="查看资产趋势"
+                    >
+                      趋势
+                    </button>
+                  </div>
+                    </h2>
                 
-                <div className="flex bg-black/20 rounded-lg p-0.5 border border-white/5">
-                  <button onClick={() => setTimeframe('24h')} className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all ${timeframe === '24h' ? 'bg-blue-500/20 text-blue-400' : 'text-slate-400 hover:text-slate-200'}`}>1天</button>
-                  <button onClick={() => setTimeframe('30d')} className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all ${timeframe === '30d' ? 'bg-blue-500/20 text-blue-400' : 'text-slate-400 hover:text-slate-200'}`}>1月</button>
-                  <button onClick={() => setTimeframe('1y')} className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all ${timeframe === '1y' ? 'bg-blue-500/20 text-blue-400' : 'text-slate-400 hover:text-slate-200'}`}>1年</button>
-                </div>
-              </div>
+                  <div className="flex shrink-0 bg-black/20 rounded-lg p-0.5 border border-white/5">
+                    <button onClick={() => setTimeframe('24h')} className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all ${timeframe === '24h' ? 'bg-blue-500/20 text-blue-400' : 'text-slate-400 hover:text-slate-200'}`}>1天</button>
+                    <button onClick={() => setTimeframe('30d')} className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all ${timeframe === '30d' ? 'bg-blue-500/20 text-blue-400' : 'text-slate-400 hover:text-slate-200'}`}>1月</button>
+                    <button onClick={() => setTimeframe('1y')} className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all ${timeframe === '1y' ? 'bg-blue-500/20 text-blue-400' : 'text-slate-400 hover:text-slate-200'}`}>1年</button>
+                  </div>
+                  </div>
 
               <div className="text-2xl font-bold text-white tracking-tight shrink-0 flex items-baseline">
                 {renderMasked(formatPrice(totalHoldingsUsd))}
@@ -624,9 +667,16 @@ const App: React.FC = () => {
                   </div>
                 )}
               </div>
+
+                </>
+              )}
             </div>
             <div className="flex-1 overflow-y-auto scrollbar-thin pb-4">
-              {holdings.length === 0 ? (
+              {holdingsView === 'trend' ? (
+                <AssetTrend
+                  formatPriceFor={formatPriceFor}
+                />
+              ) : holdings.length === 0 ? (
                 <div className="p-12 text-center text-slate-500 flex flex-col items-center">
                   <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mx-auto mb-4 border border-white/5">
                     <svg className="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
