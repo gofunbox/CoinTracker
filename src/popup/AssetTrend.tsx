@@ -82,20 +82,17 @@ const AssetTrend: React.FC<AssetTrendProps> = ({ formatPriceFor }) => {
     const baseline = snapshots[Math.max(0, snapshots.length - 1 - days)];
     if (!baseline || baseline.date === latest.date) return null;
 
-    const usdChange = latest.totalUsd - baseline.totalUsd;
     const rmbChange = latest.totalRmb - baseline.totalRmb;
     return {
-      usdChange,
       rmbChange,
-      pct: baseline.totalUsd > 0 ? (usdChange / baseline.totalUsd) * 100 : 0
+      pct: baseline.totalRmb > 0 ? (rmbChange / baseline.totalRmb) * 100 : 0
     };
   };
 
   const latestChange = latest && previous
     ? {
-        usdChange: latest.totalUsd - previous.totalUsd,
         rmbChange: latest.totalRmb - previous.totalRmb,
-        pct: previous.totalUsd > 0 ? ((latest.totalUsd - previous.totalUsd) / previous.totalUsd) * 100 : 0
+        pct: previous.totalRmb > 0 ? ((latest.totalRmb - previous.totalRmb) / previous.totalRmb) * 100 : 0
       }
     : null;
   const sevenDayChange = getChangeFromOffset(7);
@@ -106,13 +103,14 @@ const AssetTrend: React.FC<AssetTrendProps> = ({ formatPriceFor }) => {
       const prev = index > 0 ? filteredSnapshots[index - 1] : null;
       return {
         date: snapshot.date,
+        totalRmb: snapshot.totalRmb,
         usdChange: prev ? snapshot.totalUsd - prev.totalUsd : 0,
         rmbChange: prev ? snapshot.totalRmb - prev.totalRmb : 0
       };
     }).slice(1);
   }, [filteredSnapshots]);
 
-  const maxAbsDailyChange = Math.max(1, ...dailyChanges.map(item => Math.abs(item.usdChange)));
+  const maxAbsDailyChange = Math.max(1, ...dailyChanges.map(item => Math.abs(item.rmbChange)));
 
   useEffect(() => {
     let cancelled = false;
@@ -215,20 +213,18 @@ const AssetTrend: React.FC<AssetTrendProps> = ({ formatPriceFor }) => {
     chartRef.current.timeScale().fitContent();
   }, [filteredSnapshots]);
 
-  const renderChange = (label: string, change: { usdChange: number; rmbChange: number; pct: number } | null) => {
-    const positive = (change?.usdChange || 0) >= 0;
+  const renderChange = (label: string, change: { rmbChange: number; pct: number } | null) => {
+    const positive = (change?.rmbChange || 0) >= 0;
     return (
       <div className="rounded-lg border border-white/10 bg-slate-900/60 px-3 py-2">
         <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{label}</div>
         <div className={`mt-1 text-xs font-bold tabular-nums ${positive ? 'text-emerald-400' : 'text-rose-400'}`}>
           {change
-            ? `${positive ? '+' : '-'}${formatPriceFor(Math.abs(change.usdChange), 'usd')}`
+            ? `${positive ? '+' : '-'}${formatPriceFor(Math.abs(change.rmbChange), 'cny')}`
             : '--'}
         </div>
         <div className={`text-[11px] tabular-nums ${positive ? 'text-emerald-400/80' : 'text-rose-400/80'}`}>
-          {change
-            ? `${positive ? '+' : '-'}${formatPriceFor(Math.abs(change.rmbChange), 'cny')} · ${positive ? '+' : ''}${change.pct.toFixed(2)}%`
-            : '--'}
+          {change ? `${positive ? '+' : ''}${change.pct.toFixed(2)}%` : '--'}
         </div>
       </div>
     );
@@ -330,15 +326,15 @@ const AssetTrend: React.FC<AssetTrendProps> = ({ formatPriceFor }) => {
       {dailyChanges.length > 0 && (
         <div className="rounded-xl border border-white/10 bg-slate-800/70 p-3 shadow-lg shadow-black/20">
           <div className="mb-3 flex items-center justify-between">
-            <div className="text-xs font-bold text-slate-300">每日变化</div>
+            <div className="text-xs font-bold text-slate-300">每日资产</div>
             <div className="text-[11px] text-slate-500">{filteredSnapshots.length} 条记录</div>
           </div>
           <div className="space-y-2">
             {dailyChanges.slice(-10).map(item => {
-              const positive = item.usdChange >= 0;
-              const width = `${Math.max(8, Math.round((Math.abs(item.usdChange) / maxAbsDailyChange) * 100))}%`;
+              const positive = item.rmbChange >= 0;
+              const width = `${Math.max(8, Math.round((Math.abs(item.rmbChange) / maxAbsDailyChange) * 100))}%`;
               return (
-                <div key={item.date} className="grid grid-cols-[42px_1fr_118px] items-center gap-2">
+                <div key={item.date} className="grid grid-cols-[42px_1fr_122px] items-center gap-2">
                   <div className="text-[11px] font-semibold text-slate-500 tabular-nums">{formatCompactDate(item.date)}</div>
                   <div className="h-2 rounded-full bg-slate-950/60 overflow-hidden">
                     <div
@@ -346,9 +342,9 @@ const AssetTrend: React.FC<AssetTrendProps> = ({ formatPriceFor }) => {
                       style={{ width }}
                     />
                   </div>
-                  <div className={`text-right text-[11px] font-bold tabular-nums ${positive ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    {positive ? '+' : '-'}{formatPriceFor(Math.abs(item.usdChange), 'usd')}
-                    <div className="text-[10px] font-semibold opacity-80">
+                  <div className="text-right text-[11px] font-bold text-slate-100 tabular-nums">
+                    {formatPriceFor(item.totalRmb, 'cny')}
+                    <div className={`text-[10px] font-semibold ${positive ? 'text-emerald-400' : 'text-rose-400'}`}>
                       {positive ? '+' : '-'}{formatPriceFor(Math.abs(item.rmbChange), 'cny')}
                     </div>
                   </div>
