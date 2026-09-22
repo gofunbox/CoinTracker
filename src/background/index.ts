@@ -1,7 +1,7 @@
 import { CoinGeckoService } from '../services/coinGecko';
 import { SupabaseConfig, SupabaseService, SupabaseSession } from '../services/supabase';
 import { AssetSnapshot, SupportedCurrency, WatchlistItem } from '../types';
-import { encrypt, decrypt } from '../utils/crypto';
+import { encrypt, decrypt, isEncryptedValue } from '../utils/crypto';
 
 console.log('CoinTracker background script started');
 
@@ -27,6 +27,12 @@ async function initializeBackground() {
     const decryptedKey = await decrypt(result.coinGeckoApiKey);
     if (decryptedKey) {
       CoinGeckoService.setApiKey(decryptedKey);
+      if (!isEncryptedValue(result.coinGeckoApiKey)) {
+        const migratedKey = await encrypt(decryptedKey);
+        if (migratedKey) {
+          await chrome.storage.local.set({ coinGeckoApiKey: migratedKey });
+        }
+      }
     }
   }
 
@@ -580,6 +586,17 @@ async function getSupabaseAuth(): Promise<{ config?: SupabaseConfig; session?: S
     let anonKey = '';
     if (storedConfig.encryptedAnonKey) {
       anonKey = await decrypt(storedConfig.encryptedAnonKey);
+      if (anonKey && !isEncryptedValue(storedConfig.encryptedAnonKey)) {
+        const migratedAnonKey = await encrypt(anonKey);
+        if (migratedAnonKey) {
+          await chrome.storage.local.set({
+            supabaseConfig: {
+              url: storedConfig.url,
+              encryptedAnonKey: migratedAnonKey
+            }
+          });
+        }
+      }
     } else if (storedConfig.anonKey) {
       anonKey = storedConfig.anonKey;
       const encryptedAnonKey = await encrypt(anonKey);

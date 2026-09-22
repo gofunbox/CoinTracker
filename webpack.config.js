@@ -25,6 +25,12 @@ try {
   }
 } catch(e) {}
 
+// Chrome extension service workers do not provide Node's global `process`.
+// Inject dedicated compile-time constants with stable defaults instead.
+const encryptionKey = envVars['process.env.ENCRYPTION_KEY']
+  || JSON.stringify('cointracker-secure-key-2026-v2');
+const encryptionSalt = envVars['process.env.ENCRYPTION_SALT']
+  || JSON.stringify('cointracker-salt-static');
 
 module.exports = {
   entry: {
@@ -65,7 +71,8 @@ module.exports = {
       ]
     }),
     new webpack.DefinePlugin({
-      ...envVars
+      __ENCRYPTION_KEY__: encryptionKey,
+      __ENCRYPTION_SALT__: encryptionSalt
     })
   ],
   mode: 'development',

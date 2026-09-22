@@ -1,9 +1,34 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ApiResponse, AssetSnapshot, BackgroundMessage } from '../types';
+import { ApiResponse, AssetSnapshot, BackgroundMessage, Coin } from '../types';
 
 type TrendRange = '7d' | '30d' | '90d' | 'all';
 type IChartApi = any;
 type ISeriesApi<T> = any;
+
+interface AllocationItem {
+  id: string;
+  symbol: string;
+  name: string;
+  valueRmb: number;
+  percentage: number;
+  color: string;
+}
+
+const allocationColors = [
+  '#22d3ee',
+  '#f59e0b',
+  '#34d399',
+  '#fb7185',
+  '#60a5fa',
+  '#a78bfa',
+  '#f472b6',
+  '#a3e635'
+];
+
+const colorForCoin = (coinId: string) => {
+  const hash = Array.from(coinId).reduce((value, char) => ((value * 31) + char.charCodeAt(0)) >>> 0, 0);
+  return allocationColors[hash % allocationColors.length];
+};
 
 const rangeLimits: Record<TrendRange, number | null> = {
   '7d': 7,
@@ -36,6 +61,9 @@ const AssetTrend: React.FC<AssetTrendProps> = ({ formatPriceFor }) => {
   const [snapshots, setSnapshots] = useState<AssetSnapshot[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [allocationCoins, setAllocationCoins] = useState<Coin[]>([]);
+  const [isAllocationLoading, setIsAllocationLoading] = useState(true);
+  const [allocationError, setAllocationError] = useState<string | null>(null);
   const [range, setRange] = useState<TrendRange>('30d');
 
   const sendMessage = <T,>(message: BackgroundMessage): Promise<ApiResponse<T>> => {
@@ -63,7 +91,22 @@ const AssetTrend: React.FC<AssetTrendProps> = ({ formatPriceFor }) => {
       setIsLoading(false);
     };
 
+    const loadAllocation = async () => {
+      setIsAllocationLoading(true);
+      setAllocationError(null);
+      const response = await sendMessage<Coin[]>({ type: 'GET_WATCHLIST_PRICES', vsCurrency: 'cny' });
+      if (cancelled) return;
+
+      if (response.success && response.data) {
+        setAllocationCoins(response.data);
+      } else {
+        setAllocationError(response.error || '暂时无法获取当前持仓构成');
+      }
+      setIsAllocationLoading(false);
+    };
+
     loadSnapshots();
+    loadAllocation();
     return () => {
       cancelled = true;
     };
@@ -73,6 +116,56 @@ const AssetTrend: React.FC<AssetTrendProps> = ({ formatPriceFor }) => {
     const limit = rangeLimits[range];
     return limit ? snapshots.slice(-limit) : snapshots;
   }, [range, snapshots]);
+
+  const allocation = useMemo(() => {
+    const holdings = allocationCoins
+      .map(coin => ({
+        id: coin.id,
+        symbol: coin.symbol.toUpperCase(),
+        name: coin.name,
+        valueRmb: (coin.current_price || 0) * (coin.amount || 0)
+      }))
+      .filter(item => Number.isFinite(item.valueRmb) && item.valueRmb > 0)
+      .sort((a, b) => b.valueRmb - a.valueRmb);
+
+    const totalRmb = holdings.reduce((sum, item) => sum + item.valueRmb, 0);
+    if (totalRmb <= 0) {
+      return { totalRmb: 0, items: [] as AllocationItem[], gradient: '' };
+    }
+
+    const visible = holdings.slice(0, 5).map(item => ({
+      ...item,
+      percentage: (item.valueRmb / totalRmb) * 100,
+      color: colorForCoin(item.id)
+    }));
+    const remaining = holdings.slice(5);
+    const items: AllocationItem[] = [...visible];
+
+    if (remaining.length > 0) {
+      const otherValue = remaining.reduce((sum, item) => sum + item.valueRmb, 0);
+      items.push({
+        id: 'other',
+        symbol: '其他',
+        name: `其余 ${remaining.length} 个币种`,
+        valueRmb: otherValue,
+        percentage: (otherValue / totalRmb) * 100,
+        color: '#64748b'
+      });
+    }
+
+    let cursor = 0;
+    const segments = items.map(item => {
+      const start = cursor;
+      cursor += item.percentage;
+      return `${item.color} ${start.toFixed(3)}% ${Math.min(cursor, 100).toFixed(3)}%`;
+    });
+
+    return {
+      totalRmb,
+      items,
+      gradient: `conic-gradient(from -90deg, ${segments.join(', ')})`
+    };
+  }, [allocationCoins]);
 
   const latest = snapshots[snapshots.length - 1];
   const previous = snapshots[snapshots.length - 2];
@@ -104,7 +197,6 @@ const AssetTrend: React.FC<AssetTrendProps> = ({ formatPriceFor }) => {
       return {
         date: snapshot.date,
         totalRmb: snapshot.totalRmb,
-        usdChange: prev ? snapshot.totalUsd - prev.totalUsd : 0,
         rmbChange: prev ? snapshot.totalRmb - prev.totalRmb : 0
       };
     }).slice(1);
@@ -290,6 +382,76 @@ const AssetTrend: React.FC<AssetTrendProps> = ({ formatPriceFor }) => {
           {renderChange('7日', sevenDayChange)}
           {renderChange('30日', thirtyDayChange)}
         </div>
+      </div>
+
+      <div className="rounded-xl border border-white/10 bg-slate-800/70 p-3 shadow-lg shadow-black/20">
+        <div className="mb-3 flex items-center justify-between">
+          <div>
+            <div className="text-xs font-bold text-slate-300">当前资产构成</div>
+            <div className="mt-0.5 text-[10px] text-slate-500">按最新人民币价格估值</div>
+          </div>
+          {!isAllocationLoading && !allocationError && allocation.items.length > 0 && (
+            <div className="text-[10px] font-semibold text-slate-500">{allocation.items.length} 类</div>
+          )}
+        </div>
+
+        {isAllocationLoading ? (
+          <div className="flex h-[138px] items-center justify-center">
+            <div className="loading-spinner"></div>
+          </div>
+        ) : allocationError ? (
+          <div className="flex h-[96px] items-center justify-center rounded-lg border border-amber-500/15 bg-amber-500/5 px-5 text-center text-xs text-amber-300/80">
+            暂时无法获取当前持仓构成
+          </div>
+        ) : allocation.items.length === 0 ? (
+          <div className="flex h-[96px] items-center justify-center rounded-lg border border-white/5 bg-slate-900/40 text-xs text-slate-500">
+            暂无持仓数据
+          </div>
+        ) : (
+          <div className="grid grid-cols-[124px_minmax(0,1fr)] items-center gap-4">
+            <div
+              className="relative h-[124px] w-[124px] shrink-0 rounded-full shadow-inner shadow-black/30"
+              style={{ background: allocation.gradient }}
+              role="img"
+              aria-label={`当前资产构成，总计 ${formatPriceFor(allocation.totalRmb, 'cny')}`}
+            >
+              <div className="absolute inset-[17px] flex flex-col items-center justify-center rounded-full border border-white/10 bg-slate-900 px-2 text-center shadow-lg shadow-black/30">
+                <div className="text-[9px] font-semibold uppercase tracking-wider text-slate-500">当前总额</div>
+                <div
+                  className="mt-1 max-w-full break-all text-[11px] font-bold leading-tight text-white tabular-nums"
+                  title={formatPriceFor(allocation.totalRmb, 'cny')}
+                >
+                  {formatPriceFor(allocation.totalRmb, 'cny')}
+                </div>
+              </div>
+            </div>
+
+            <div className="min-w-0 space-y-1.5">
+              {allocation.items.map(item => (
+                <div key={item.id} className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+                  <div className="flex min-w-0 items-center gap-2" title={item.name}>
+                    <span
+                      className="h-2.5 w-2.5 shrink-0 rounded-sm"
+                      style={{ backgroundColor: item.color }}
+                    />
+                    <span className="truncate text-[11px] font-bold text-slate-300">{item.symbol}</span>
+                  </div>
+                  <div className="min-w-0 text-right">
+                    <div
+                      className="max-w-[104px] truncate text-[10px] font-semibold text-slate-200 tabular-nums"
+                      title={formatPriceFor(item.valueRmb, 'cny')}
+                    >
+                      {formatPriceFor(item.valueRmb, 'cny')}
+                    </div>
+                    <div className="text-[9px] font-semibold text-slate-500 tabular-nums">
+                      {item.percentage.toFixed(1)}%
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="rounded-xl border border-white/10 bg-slate-800/70 p-3 shadow-lg shadow-black/20">

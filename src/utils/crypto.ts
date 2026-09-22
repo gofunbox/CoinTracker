@@ -3,10 +3,14 @@
  * in Chrome Extension storage using Web Crypto API (AES-GCM).
  */
 
-declare var process: any;
+declare const __ENCRYPTION_KEY__: string;
+declare const __ENCRYPTION_SALT__: string;
 
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'cointracker-secure-key-2026-v2';
-const SALT = process.env.ENCRYPTION_SALT || 'cointracker-salt-static';
+const ENCRYPTION_KEY = __ENCRYPTION_KEY__;
+const SALT = __ENCRYPTION_SALT__;
+const ENCRYPTED_VALUE_PREFIX = 'v1:';
+
+export const isEncryptedValue = (value: string): boolean => value.startsWith(ENCRYPTED_VALUE_PREFIX);
 
 const getPasswordKey = async () => {
     const enc = new TextEncoder();
@@ -48,7 +52,7 @@ export const encrypt = async (plainText: string): Promise<string> => {
         combined.set(iv, 0);
         combined.set(new Uint8Array(ciphertext), iv.length);
         
-        return btoa(String.fromCharCode(...Array.from(combined)));
+        return `${ENCRYPTED_VALUE_PREFIX}${btoa(String.fromCharCode(...Array.from(combined)))}`;
     } catch (error) {
         console.error('Encryption failed:', error);
         return '';
@@ -57,12 +61,24 @@ export const encrypt = async (plainText: string): Promise<string> => {
 
 export const decrypt = async (cipherTextBase64: string): Promise<string> => {
     if (!cipherTextBase64) return '';
+
+    const hasVersionPrefix = cipherTextBase64.startsWith(ENCRYPTED_VALUE_PREFIX);
+    const encodedValue = hasVersionPrefix
+        ? cipherTextBase64.slice(ENCRYPTED_VALUE_PREFIX.length)
+        : cipherTextBase64;
+
     try {
         const key = await getPasswordKey();
-        const binaryStr = atob(cipherTextBase64);
+        const binaryStr = atob(encodedValue);
         const combined = new Uint8Array(binaryStr.length);
         for (let i = 0; i < binaryStr.length; i++) {
             combined[i] = binaryStr.charCodeAt(i);
+        }
+
+        // AES-GCM data contains a 12-byte IV and at least a 16-byte auth tag.
+        // Short unversioned values are from releases that stored keys as plain text.
+        if (combined.length < 28) {
+            return hasVersionPrefix ? '' : cipherTextBase64;
         }
         
         const iv = combined.slice(0, 12);
@@ -75,8 +91,17 @@ export const decrypt = async (cipherTextBase64: string): Promise<string> => {
         );
         
         return new TextDecoder().decode(decrypted);
-    } catch (error) {
-        console.error('Decryption failed:', error);
+    } catch {
+        // Older releases stored API keys and Supabase keys as plain text. Values
+        // that are not base64 are safe to return for the caller to migrate.
+        try {
+            atob(encodedValue);
+        } catch {
+            return hasVersionPrefix ? '' : cipherTextBase64;
+        }
+
+        // A valid encrypted payload may have been created with another build key.
+        // It cannot be recovered here, but it should not break the service worker.
         return '';
     }
 };
